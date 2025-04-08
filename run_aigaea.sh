@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# v1.1.5
+# v1.1.6
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
@@ -149,6 +149,15 @@ setup_environment() {
     pip install -r requirements.txt
     if [ $? -ne 0 ]; then
         echo "错误：依赖安装失败，请检查网络或 requirements.txt 文件"
+        popd > /dev/null
+        exit 1
+    fi
+
+    # 显式安装 pandas
+    echo "安装 pandas 模块..."
+    pip install pandas
+    if [ $? -ne 0 ]; then
+        echo "错误：pandas 安装失败，请检查网络或 pip 配置"
         popd > /dev/null
         exit 1
     fi
