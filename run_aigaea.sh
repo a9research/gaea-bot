@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 定义项目目录和虚拟环境名称
-PROJECT_DIR="AiGaea-BOT"
-VENV_NAME="aigaea_venv"
+PROJECT_DIR="/home/AiGaea-BOT"
+VENV_NAME="/home/AiGaea-BOT/aigaea_venv"
 PYTHON_CMD="python3"
 MIN_VERSION="3.9"
 

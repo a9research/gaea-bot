@@ -13,7 +13,15 @@ Git：用于克隆项目。
 网络连接：用于下载依赖和访问 AiGaea 服务。
 
 ### 详细使用步骤
-步骤 1：保存脚本
+#### 步骤 1：
+从github上拉取安装脚本并执行
+```
+wget -O run_aigaea.sh https://raw.githubusercontent.com/a9research/gaea-bot/refs/heads/main/run_aigaea.sh && sed -i 's/\r$//' run_aigaea.sh && chmod +x run_aigaea.sh && ./run_aigaea.sh
+```
+
+
+
+保存脚本
 将上述代码保存为 run_aigaea.sh 文件，例如保存到 ~/aigaea 目录。
 bash
 
