@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# v1.1
+
 # 定义项目目录和虚拟环境名称
 PROJECT_DIR="AiGaea-BOT"
 VENV_NAME="aigaea_venv"
