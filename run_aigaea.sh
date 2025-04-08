@@ -40,8 +40,8 @@ install_prerequisites() {
             echo "错误：Python 安装失败，请手动安装 Python 3.9 或更高版本"
             exit 1
         fi
-        PYTHON_CMD="python3.10"  # 更新 Python 命令为新安装的版本
-        echo "Python 3.10 安装 성공"
+        PYTHON_CMD="python3.10"
+        echo "Python 3.10 安装成功"
     else
         PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
         if [[ "$(printf '%s\n' "$MIN_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$MIN_VERSION" ]]; then
@@ -56,18 +56,22 @@ install_prerequisites() {
             echo "Python 3.10 安装成功"
         else
             echo "Python 已安装，版本为 $PYTHON_VERSION"
-            # 检查并安装 python3-venv
-            if ! $PYTHON_CMD -m venv --help &> /dev/null; then
-                echo "未找到 python3-venv 模块，正在安装..."
-                $SUDO apt-get update -y
-                $SUDO apt-get install -y python3.10-venv
-                if [ $? -ne 0 ]; then
-                    echo "错误：python3-venv 安装失败，请手动安装"
-                    exit 1
-                fi
-                echo "python3-venv 安装成功"
-            fi
         fi
+    fi
+
+    # 检查并安装 python3-venv
+    if ! $PYTHON_CMD -m venv --help &> /dev/null; then
+        echo "未找到 python3-venv 模块，正在安装 python3.${PYTHON_VERSION}-venv..."
+        $SUDO apt-get update -y
+        $SUDO apt-get install -y python3.${PYTHON_VERSION}-venv
+        if [ $? -ne 0 ]; then
+            echo "错误：python3-venv 安装失败，请手动运行以下命令安装："
+            echo "  $SUDO apt-get install python3.${PYTHON_VERSION}-venv"
+            exit 1
+        fi
+        echo "python3-venv 安装成功"
+    else
+        echo "python3-venv 已安装"
     fi
 }
 
@@ -93,7 +97,8 @@ setup_environment() {
         echo "创建虚拟环境..."
         $PYTHON_CMD -m venv "$VENV_NAME"
         if [ $? -ne 0 ]; then
-            echo "错误：虚拟环境创建失败，请检查 python3-venv 是否安装"
+            echo "错误：虚拟环境创建失败，请检查 python3-venv 是否正确安装"
+            echo "尝试手动安装：$SUDO apt-get install python3.${PYTHON_VERSION}-venv"
             exit 1
         fi
     fi
