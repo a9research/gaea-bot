@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# v1.1.7
+# v1.1.11
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
