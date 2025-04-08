@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 定义项目目录和虚拟环境名称
-PROJECT_DIR="/home/AiGaea-BOT"
-VENV_NAME="/home/AiGaea-BOT/aigaea_venv"
+PROJECT_DIR="AiGaea-BOT"
+VENV_NAME="aigaea_venv"
 PYTHON_CMD="python3"
 MIN_VERSION="3.9"
 
@@ -33,29 +33,40 @@ install_prerequisites() {
 
     # 检查 Python 3.9+
     if ! command -v $PYTHON_CMD &> /dev/null; then
-        echo "未找到 Python，正在安装 Python 3.9..."
+        echo "未找到 Python，正在安装 Python 3.10..."
         $SUDO apt-get update -y
-        $SUDO apt-get install -y python3.9 python3-pip python3-venv
+        $SUDO apt-get install -y python3.10 python3-pip python3.10-venv
         if [ $? -ne 0 ]; then
             echo "错误：Python 安装失败，请手动安装 Python 3.9 或更高版本"
             exit 1
         fi
-        PYTHON_CMD="python3.9"  # 更新 Python 命令为新安装的版本
-        echo "Python 3.9 安装成功"
+        PYTHON_CMD="python3.10"  # 更新 Python 命令为新安装的版本
+        echo "Python 3.10 安装 성공"
     else
         PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
         if [[ "$(printf '%s\n' "$MIN_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$MIN_VERSION" ]]; then
-            echo "当前 Python 版本 ($PYTHON_VERSION) 低于 3.9，正在安装 Python 3.9..."
+            echo "当前 Python 版本 ($PYTHON_VERSION) 低于 3.9，正在安装 Python 3.10..."
             $SUDO apt-get update -y
-            $SUDO apt-get install -y python3.9 python3-pip python3-venv
+            $SUDO apt-get install -y python3.10 python3-pip python3.10-venv
             if [ $? -ne 0 ]; then
-                echo "错误：Python 3.9 安装失败，请手动安装"
+                echo "错误：Python 3.10 安装失败，请手动安装"
                 exit 1
             fi
-            PYTHON_CMD="python3.9"
-            echo "Python 3.9 安装成功"
+            PYTHON_CMD="python3.10"
+            echo "Python 3.10 安装成功"
         else
             echo "Python 已安装，版本为 $PYTHON_VERSION"
+            # 检查并安装 python3-venv
+            if ! $PYTHON_CMD -m venv --help &> /dev/null; then
+                echo "未找到 python3-venv 模块，正在安装..."
+                $SUDO apt-get update -y
+                $SUDO apt-get install -y python3.10-venv
+                if [ $? -ne 0 ]; then
+                    echo "错误：python3-venv 安装失败，请手动安装"
+                    exit 1
+                fi
+                echo "python3-venv 安装成功"
+            fi
         fi
     fi
 }
@@ -81,10 +92,20 @@ setup_environment() {
     if [ ! -d "$VENV_NAME" ]; then
         echo "创建虚拟环境..."
         $PYTHON_CMD -m venv "$VENV_NAME"
+        if [ $? -ne 0 ]; then
+            echo "错误：虚拟环境创建失败，请检查 python3-venv 是否安装"
+            exit 1
+        fi
     fi
 
     # 激活虚拟环境
-    source "$VENV_NAME/bin/activate"
+    if [ -f "$VENV_NAME/bin/activate" ]; then
+        source "$VENV_NAME/bin/activate"
+        echo "虚拟环境已激活"
+    else
+        echo "错误：虚拟环境激活文件不存在，请检查虚拟环境是否创建成功"
+        exit 1
+    fi
 
     # 升级 pip
     echo "升级 pip..."
@@ -127,7 +148,7 @@ check_config
 
 # 运行项目
 echo "启动 AiGaea-BOT..."
-python bot.py
+$PYTHON_CMD bot.py
 
 # 退出虚拟环境
 deactivate
