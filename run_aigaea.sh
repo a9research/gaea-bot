@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# v1.1.6
+# v1.1.7
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
@@ -189,10 +189,10 @@ configure_files() {
         fi
         names+=("$name")
 
-        echo "请输入第 $account_index 个账户的 Browser_ID（前 8 位）："
+        echo "请输入第 $account_index 个账户的 Browser_ID："
         read browser_id
-        if [ ${#browser_id} -ne 8 ]; then
-            echo "错误：Browser_ID 必须为 8 位，请重新输入"
+        if [ -z "$browser_id" ]; then
+            echo "错误：Browser_ID 不能为空，请重新输入"
             continue
         fi
         browser_ids+=("$browser_id")
@@ -240,37 +240,92 @@ configure_files() {
     popd > /dev/null
 }
 
-# 主流程
-echo "开始运行 AiGaea-BOT 脚本..."
+# 函数：运行项目
+run_project() {
+    # 切换到脚本根目录
+    pushd "$SCRIPT_ROOT" > /dev/null || {
+        echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
+        exit 1
+    }
 
-# 安装前置组件
-install_prerequisites
+    # 切换到项目目录
+    pushd "$PROJECT_DIR" > /dev/null || {
+        echo "错误：无法进入目录 $PROJECT_DIR"
+        popd > /dev/null
+        exit 1
+    }
 
-# 克隆或更新项目
-clone_or_update_project
+    # 检查虚拟环境是否存在并激活
+    if [ -f "$VENV_NAME/bin/activate" ]; then
+        source "$VENV_NAME/bin/activate"
+        echo "虚拟环境已激活"
+    else
+        echo "错误：虚拟环境未找到，请先运行安装流程"
+        popd > /dev/null
+        popd > /dev/null
+        exit 1
+    fi
 
-# 设置虚拟环境和依赖
-setup_environment
+    # 运行 bot.py
+    echo "启动 AiGaea-BOT..."
+    $PYTHON_CMD bot.py
 
-# 配置 accounts.csv
-configure_files
+    # 退出虚拟环境
+    deactivate
 
-# 运行项目
-echo "启动 AiGaea-BOT..."
-pushd "$SCRIPT_ROOT" > /dev/null || {
-    echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
-    exit 1
-}
-pushd "$PROJECT_DIR" > /dev/null || {
-    echo "错误：无法进入目录 $PROJECT_DIR"
     popd > /dev/null
-    exit 1
+    popd > /dev/null
 }
-$PYTHON_CMD bot.py
-popd > /dev/null
-popd > /dev/null
 
-# 退出虚拟环境
-deactivate
+# 函数：安装 GaeaBot
+install_gaeabot() {
+    echo "开始安装 AiGaea-BOT..."
 
-echo "脚本执行完成"
+    # 安装前置组件
+    install_prerequisites
+
+    # 克隆或更新项目
+    clone_or_update_project
+
+    # 设置虚拟环境和依赖
+    setup_environment
+
+    # 配置 accounts.csv
+    configure_files
+
+    echo "AiGaea-BOT 安装完成"
+}
+
+# 函数：显示菜单
+show_menu() {
+    while true; do
+        echo ""
+        echo "===== AiGaea-BOT 管理菜单 ====="
+        echo "1. 安装 GaeaBot"
+        echo "2. 运行 GaeaBot"
+        echo "3. 退出"
+        echo "=============================="
+        echo -n "请选择一个选项 [1-3]: "
+        read choice
+
+        case $choice in
+            1)
+                install_gaeabot
+                ;;
+            2)
+                run_project
+                ;;
+            3)
+                echo "退出脚本..."
+                exit 0
+                ;;
+            *)
+                echo "无效选项，请输入 1、2 或 3"
+                ;;
+        esac
+    done
+}
+
+# 主流程：显示菜单
+echo "欢迎使用 AiGaea-BOT 脚本"
+show_menu
