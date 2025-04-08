@@ -1,128 +1,488 @@
-import aiohttp
-import asyncio
-import aiohttp_socks
-import random
-import time
-import sys
-from colorama import Fore, init
-from fake_useragent import UserAgent
-import pandas as pd  # 用于读取 CSV 文件
+from aiohttp import (
+    ClientResponseError,
+    ClientSession,
+    ClientTimeout
+)
+from aiohttp_socks import ProxyConnector
+from fake_useragent import FakeUserAgent
+from datetime import datetime
+from colorama import *
+import asyncio, uuid, time, json, os, pytz
 
-init(autoreset=True)
+wib = pytz.timezone('Asia/Jakarta')
 
 class AiGaea:
-    def __init__(self):
-        self.ua = UserAgent()
-        self.accounts = self.load_accounts()
-
-    def load_accounts(self):
-        """从 accounts.csv 加载账户信息（包含 Browser_ID、Token 和 Proxy）"""
-        print(f"{Fore.CYAN}正在加载账户信息...")
-        try:
-            df = pd.read_csv('accounts.csv')
-            required_columns = ['Browser_ID', 'Token', 'Proxy']
-            if not all(col in df.columns for col in required_columns):
-                print(f"{Fore.RED}错误：accounts.csv 文件必须包含 'Browser_ID'、'Token' 和 'Proxy' 列")
-                sys.exit(1)
-            # 替换 NaN 为空字符串（处理 Proxy 为空的情况）
-            df['Proxy'] = df['Proxy'].fillna('')
-            # 截取 Browser_ID 的前 8 位
-            df['Browser_ID'] = df['Browser_ID'].apply(lambda x: x[:8])
-            # 验证 Browser_ID 截取后是否为 8 位
-            if not all(df['Browser_ID'].str.len() == 8):
-                print(f"{Fore.RED}错误：accounts.csv 中的 Browser_ID 截取前 8 位后长度不正确")
-                sys.exit(1)
-            accounts = df[required_columns].to_dict('records')
-            print(f"{Fore.GREEN}成功加载 {len(accounts)} 个账户")
-            return accounts
-        except FileNotFoundError:
-            print(f"{Fore.RED}错误：未找到 accounts.csv 文件，请创建该文件")
-            sys.exit(1)
-        except Exception as e:
-            print(f"{Fore.RED}错误：加载 accounts.csv 文件失败 - {e}")
-            sys.exit(1)
-
-    async def get_account_info(self, session, account, proxy):
-        """获取账户信息"""
-        browser_id = account['Browser_ID']  # 已截取为前 8 位
-        token = account['Token']
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Origin': 'https://app.aigaea.io',
-            'Referer': 'https://app.aigaea.io/',
-            'User-Agent': self.ua.random,
-            'X-Browser-Id': browser_id,
+    def __init__(self) -> None:
+        self.headers = {
+            "Accept": "*/*",
+            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Origin": "https://app.aigaea.net",
+            "Referer": "https://app.aigaea.net/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
+            "User-Agent": FakeUserAgent().random
         }
-        url = 'https://api.aigaea.io/api/user'
+        self.proxies = []
+        self.proxy_index = 0
+        self.account_proxies = {}
+
+    def clear_terminal(self):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+    def log(self, message):
+        print(
+            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}{message}",
+            flush=True
+        )
+
+    def welcome(self):
+        print(
+            f"""
+        {Fore.GREEN + Style.BRIGHT}Auto Ping {Fore.BLUE + Style.BRIGHT}AI Gaea - BOT
+            """
+            f"""
+        {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
+            """
+        )
+
+    def format_seconds(self, seconds):
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+    
+    def load_accounts(self):
+        filename = "accounts.json"
         try:
-            async with session.get(url, headers=headers, proxy=proxy) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    print(f"{Fore.GREEN}账户信息获取成功 - Browser_ID: {browser_id}")
+            if not os.path.exists(filename):
+                self.log(f"{Fore.RED}File {filename} Not Found.{Style.RESET_ALL}")
+                return
+
+            with open(filename, 'r') as file:
+                data = json.load(file)
+                if isinstance(data, list):
                     return data
-                else:
-                    print(f"{Fore.RED}账户信息获取失败 - Browser_ID: {browser_id} - 状态码: {response.status}")
-                    return None
-        except Exception as e:
-            print(f"{Fore.RED}账户信息获取失败 - Browser_ID: {browser_id} - 错误: {e}")
-            return None
-
-    async def run_with_private_proxy(self):
-        """使用私有代理运行"""
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for account in self.accounts:
-                proxy = account['Proxy'] if account['Proxy'] else None
-                if proxy:
-                    connector = aiohttp_socks.ProxyConnector.from_url(proxy)
-                    session_with_proxy = aiohttp.ClientSession(connector=connector)
-                    task = self.get_account_info(session_with_proxy, account, proxy)
-                    tasks.append(task)
-                else:
-                    task = self.get_account_info(session, account, None)
-                    tasks.append(task)
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            return results
-
-    async def run_without_proxy(self):
-        """不使用代理运行"""
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for account in self.accounts:
-                task = self.get_account_info(session, account, None)
-                tasks.append(task)
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            return results
-
-    async def run(self, choice):
-        """根据用户选择运行程序"""
-        if choice == 1:
-            print(f"{Fore.CYAN}使用私有代理运行...")
-            return await self.run_with_private_proxy()
-        elif choice == 2:
-            print(f"{Fore.CYAN}不使用代理运行...")
-            return await self.run_without_proxy()
-        else:
-            print(f"{Fore.RED}无效的选择")
+                return []
+        except json.JSONDecodeError:
             return []
-
-def main():
-    bot = AiGaea()
-    print(f"{Fore.YELLOW}1. 使用私有代理运行")
-    print(f"{Fore.YELLOW}2. 不使用代理运行")
-    while True:
+    
+    async def load_proxies(self, use_proxy_choice: int):
+        filename = "proxy.txt"
         try:
-            choice = int(input(f"{Fore.CYAN}选择 [1/2] -> "))
-            if choice in [1, 2]:
-                break
-            print(f"{Fore.RED}无效的选择，请输入 1 或 2")
-        except ValueError:
-            print(f"{Fore.RED}请输入数字 1 或 2")
+            if use_proxy_choice == 1:
+                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt") as response:
+                        response.raise_for_status()
+                        content = await response.text()
+                        with open(filename, 'w') as f:
+                            f.write(content)
+                        self.proxies = content.splitlines()
+            else:
+                if not os.path.exists(filename):
+                    self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
+                    return
+                with open(filename, 'r') as f:
+                    self.proxies = f.read().splitlines()
+            
+            if not self.proxies:
+                self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
+                return
 
-    start_time = time.time()
-    results = asyncio.run(bot.run(choice))
-    end_time = time.time()
-    print(f"{Fore.GREEN}任务完成，耗时: {end_time - start_time:.2f} 秒")
+            self.log(
+                f"{Fore.GREEN + Style.BRIGHT}Proxies Total  : {Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}{len(self.proxies)}{Style.RESET_ALL}"
+            )
+        
+        except Exception as e:
+            self.log(f"{Fore.RED + Style.BRIGHT}Failed To Load Proxies: {e}{Style.RESET_ALL}")
+            self.proxies = []
+
+    def check_proxy_schemes(self, proxies):
+        schemes = ["http://", "https://", "socks4://", "socks5://"]
+        if any(proxies.startswith(scheme) for scheme in schemes):
+            return proxies
+        return f"http://{proxies}"
+
+    def get_next_proxy_for_account(self, token):
+        if token not in self.account_proxies:
+            if not self.proxies:
+                return None
+            proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
+            self.account_proxies[token] = proxy
+            self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
+        return self.account_proxies[token]
+
+    def rotate_proxy_for_account(self, token):
+        if not self.proxies:
+            return None
+        proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
+        self.account_proxies[token] = proxy
+        self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
+        return proxy
+    
+    def mask_account(self, account):
+        mask_account = account[:3] + '*' * 3 + account[-3:]
+        return mask_account
+        
+    def generate_random_browser_id(self, browser_id: str):
+        random_browser_id = str(uuid.uuid4())[8:]
+        if len(browser_id) == 32:
+            return browser_id
+
+        return browser_id[:8] + random_browser_id
+
+    def print_message(self, account, proxy, color, message):
+        self.log(
+            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} {account} {Style.RESET_ALL}"
+            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+            f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
+            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+        )
+
+    def print_question(self):
+        while True:
+            try:
+                print("1. Run With Monosans Proxy")
+                print("2. Run With Private Proxy")
+                print("3. Run Without Proxy")
+                choose = int(input("Choose [1/2/3] -> ").strip())
+
+                if choose in [1, 2, 3]:
+                    proxy_type = (
+                        "Run With Monosans Proxy" if choose == 1 else 
+                        "Run With Private Proxy" if choose == 2 else 
+                        "Run Without Proxy"
+                    )
+                    print(f"{Fore.GREEN + Style.BRIGHT}{proxy_type} Selected.{Style.RESET_ALL}")
+                    return choose
+                else:
+                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
+            except ValueError:
+                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
+
+    async def user_data(self, token: str, proxy=None):
+        url = "https://api.aigaea.net/api/auth/session"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Length": "0",
+            "Content-Type": "application/json"
+
+        }
+        connector = ProxyConnector.from_url(proxy) if proxy else None
+        try:
+            async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                async with session.post(url=url, headers=headers) as response:
+                    response.raise_for_status()
+                    result = await response.json()
+                    return result['data']
+        except (Exception, ClientResponseError) as e:
+            return self.print_message(self.mask_account(token), proxy, Fore.RED, f"GET User ID Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+        
+    async def user_ip(self, token: str, username: str, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/network/ip"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                
+                return self.print_message(username, proxy, Fore.RED, f"GET IP Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+        
+    async def user_earning(self, token: str, username: str, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/earn/info"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                
+                return self.print_message(username, proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                
+    async def mission_lists(self, token: str, username: str, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/mission/list"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                
+                return self.print_message(username, proxy, Fore.RED, f"GET Available Mission Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                
+    async def complete_mission(self, token: str, username: str, mission_id: int, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/mission/complete-mission"
+        data = json.dumps({"mission_id":mission_id})
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Length": str(len(data)),
+            "Content-Type": "application/json"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2)
+                    continue
+                
+                return self.print_message(username, proxy, Fore.RED, f"Complete Available Mission Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                
+    async def send_ping(self, token: str, radnom_browser_id: str, username: str, user_id: str, use_proxy: bool, proxy=None, retries=5):
+        url = "https://api.aigaea.net/api/network/ping"
+        data = json.dumps({"browser_id":radnom_browser_id, "timestamp":int(time.time()), "uid":user_id, "version":"2.0.2"})
+        headers = {
+            "Accept": "*/*",
+            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Authorization": f"Bearer {token}",
+            "Content-Length": str(len(data)),
+            "Content-Type": "application/json",
+            "Origin": "chrome-extension://cpjicfogbgognnifjgmenmaldnmeeeib",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "none",
+            "User-Agent": FakeUserAgent().random
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['data']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                
+                self.print_message(username, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                proxy = self.rotate_proxy_for_account(token) if use_proxy else None
+                return None
+            
+    async def process_user_earning(self, token: str, username: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
+            earning = await self.user_earning(token, username, proxy)
+            if earning:
+                today = earning['today_total']
+                total = earning['total_total']
+                uptime = earning['today_uptime']
+
+                self.print_message(username, proxy, Fore.WHITE,
+                    f"Earning Today {today} PTS "
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} Earning Total {total} PTS {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Uptime: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}Today {uptime} Minutes{Style.RESET_ALL}"
+                )
+
+            await asyncio.sleep(15 * 60)
+
+    async def process_user_missions(self, token: str, username: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
+            missions = await self.mission_lists(token, username, proxy)
+            if missions:
+                completed = False
+                for mission in missions:
+                    mission_id = str(mission['id'])
+                    title = mission['title']
+                    reward = mission['points']
+                    status = mission['status']
+
+                    if mission and status == "AVAILABLE":
+                        complete = await self.complete_mission(token, username, mission_id, proxy)
+                        if complete:
+                            self.print_message(username, proxy, Fore.WHITE,
+                                f"Mission {title}"
+                                f"{Fore.GREEN + Style.BRIGHT} Is Completed {Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT}{reward} PTS{Style.RESET_ALL}"
+                            )
+                        else:
+                            self.print_message(username, proxy, Fore.WHITE,
+                                f"Mission {title} "
+                                f"{Fore.RED + Style.BRIGHT}Isn't Completed{Style.RESET_ALL}"
+                            )
+                        
+                    else:
+                        completed = True
+
+                if completed:
+                    self.print_message(username, proxy, Fore.GREEN,
+                        "All Available Mission Is Completed"
+                    )
+                
+            await asyncio.sleep(12 * 60 * 60)
+
+    async def process_send_ping(self, token: str, browser_id: str, username: str, user_id: str, server_host: str, use_proxy: bool):
+        radnom_browser_id = self.generate_random_browser_id(browser_id)
+        while True:
+            print(
+                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                f"{Fore.BLUE + Style.BRIGHT}Try to Sent Ping...{Style.RESET_ALL}",
+                end="\r",
+                flush=True
+            )
+
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
+            ping = await self.send_ping(token, radnom_browser_id, username, user_id, use_proxy, proxy)
+            if ping:
+                score = ping['score']
+
+                self.print_message(username, proxy, Fore.GREEN,
+                    "PING Success"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Network Score:{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {score} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Server Host: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{server_host}{Style.RESET_ALL}"
+                )
+
+            print(
+                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                f"{Fore.BLUE + Style.BRIGHT}Wait For 10 Minutes For Next Ping...{Style.RESET_ALL}",
+                end="\r",
+                flush=True
+            )
+            await asyncio.sleep(10 * 60)
+
+    async def get_user_data(self, token: str, use_proxy: bool):
+        proxy = self.get_next_proxy_for_account(token) if use_proxy else None
+        user = None
+        while user is None:
+            user = await self.user_data(token, proxy)
+            if not user:
+                proxy = self.rotate_proxy_for_account(token) if use_proxy else None
+                continue
+
+            self.print_message(self.mask_account(token), proxy, Fore.GREEN, "GET User ID Success")
+
+            server_host = "Unknown"
+            ip_data = await self.user_ip(token, user['name'], proxy)
+            if ip_data:
+                server_host = ip_data['host']
+
+            return user, server_host
+        
+    async def process_accounts(self, token: str, browser_id: str, use_proxy: bool):
+        user, server_host = await self.get_user_data(token, use_proxy)
+        if user and server_host:
+            username = user['name']
+            user_id = user['uid']
+
+            tasks = []
+            tasks.append(self.process_user_earning(token, username, use_proxy))
+            tasks.append(self.process_user_missions(token, username, use_proxy))
+            tasks.append(self.process_send_ping(token, browser_id, username, user_id, server_host, use_proxy))
+            await asyncio.gather(*tasks)
+
+    async def main(self):
+        try:
+            accounts = self.load_accounts()
+            if not accounts:
+                self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
+                return
+            
+            use_proxy_choice = self.print_question()
+
+            use_proxy = False
+            if use_proxy_choice in [1, 2]:
+                use_proxy = True
+
+            self.clear_terminal()
+            self.welcome()
+            self.log(
+                f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}{len(accounts)}{Style.RESET_ALL}"
+            )
+
+            if use_proxy:
+                await self.load_proxies(use_proxy_choice)
+
+            self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
+
+            while True:
+                tasks = []
+                for account in accounts:
+                    browser_id = account.get('Browser_ID')
+                    token = account.get('Token')
+
+                    if token and browser_id:
+                        tasks.append(self.process_accounts(token, browser_id, use_proxy))
+
+                await asyncio.gather(*tasks)
+                await asyncio.sleep(10)
+
+        except Exception as e:
+            self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
+            raise e
 
 if __name__ == "__main__":
-    main()
+    try:
+        bot = AiGaea()
+        asyncio.run(bot.main())
+    except KeyboardInterrupt:
+        print(
+            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+            f"{Fore.RED + Style.BRIGHT}[ EXIT ] AI Gaea - BOT{Style.RESET_ALL}                                       "                              
+        )

@@ -1,0 +1,77 @@
+# Python 相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 虚拟环境
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# 日志文件
+*.log
+logs/
+*.log.*
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
+.#*
+
+# 缓存文件
+*.cache
+.cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE/编辑器相关
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 敏感数据文件
+accounts.csv
+accounts.json
+proxy.txt
+*.env
+
+# 项目特定文件
+*.pid
+*.seed
+*.pid.lock
+
+# 其他
+*.out
+*.prof
