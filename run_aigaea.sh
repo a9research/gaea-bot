@@ -153,15 +153,6 @@ setup_environment() {
         exit 1
     fi
 
-    # 显式安装 pandas
-    echo "安装 pandas 模块..."
-    pip install pandas
-    if [ $? -ne 0 ]; then
-        echo "错误：pandas 安装失败，请检查网络或 pip 配置"
-        popd > /dev/null
-        exit 1
-    fi
-
     popd > /dev/null
     popd > /dev/null
 }

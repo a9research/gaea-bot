@@ -337,7 +337,7 @@ class AiGaea:
                     f"{Fore.WHITE + Style.BRIGHT}{server_host}{Style.RESET_ALL}"
                 )
 
-            wait_time = random.uniform(12 * 60, 18 * 60)  # Random wait between 12-18 minutes
+            wait_time = random.uniform(6 * 60, 12 * 60)  # Random wait between 12-18 minutes
             print(
                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
@@ -372,8 +372,8 @@ class AiGaea:
             self.log(f"{Fore.RED}Missing Token or Browser_ID for account {account.get('Name')}{Style.RESET_ALL}")
             return
 
-        # Add random initial delay (0-900 seconds)
-        initial_delay = random.uniform(0, 900)
+        # Add random initial delay (0-200 seconds)
+        initial_delay = random.uniform(0, 200)
         self.log(f"{Fore.YELLOW}Initial delay for {account.get('Name')}: {self.format_seconds(initial_delay)}{Style.RESET_ALL}")
         await asyncio.sleep(initial_delay)
 
