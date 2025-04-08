@@ -84,7 +84,7 @@ clone_or_update_project() {
         cd ..
     else
         echo "克隆项目..."
-        git clone https://github.com/vonssy/AiGaea-BOT.git
+        git clone https://github.com/a9research/gaea-bot.git
     fi
 }
 
@@ -125,69 +125,70 @@ setup_environment() {
     fi
 }
 
-# 函数：检查和初始化配置文件
-check_config() {
-    # 检查 tokens.txt
-    if [ ! -f "tokens.txt" ]; then
-        echo "未找到 tokens.txt 文件，正在创建默认文件..."
-        cat << EOF > tokens.txt
-# 请在此填入您的 token，每行一个
-# 示例：
-# token1
-# token2
-EOF
-        echo "已创建 tokens.txt 文件，请编辑文件并填入您的 token 数据"
-    else
-        echo "tokens.txt 文件已存在，请确保已填入正确的 token 数据"
+# 函数：收集用户输入并生成 accounts.csv
+configure_files() {
+    cd "$PROJECT_DIR" || exit
+
+    echo "请配置您的账户信息（输入完成后按 Enter 继续）"
+    declare -a names
+    declare -a browser_ids
+    declare -a tokens
+    declare -a proxies
+    account_index=1
+
+    while true; do
+        echo "请输入第 $account_index 个账户的名称（用于标记，直接按 Enter 结束输入）："
+        read name
+        if [ -z "$name" ]; then
+            break
+        fi
+        names+=("$name")
+
+        echo "请输入第 $account_index 个账户的 Browser_ID（前 8 位）："
+        read browser_id
+        if [ ${#browser_id} -ne 8 ]; then
+            echo "错误：Browser_ID 必须为 8 位，请重新输入"
+            continue
+        fi
+        browser_ids+=("$browser_id")
+
+        echo "请输入第 $account_index 个账户的 Token："
+        read token
+        if [ -z "$token" ]; then
+            echo "错误：Token 不能为空，请重新输入"
+            continue
+        fi
+        tokens+=("$token")
+
+        echo "请输入第 $account_index 个账户的代理地址（格式：protocol://user:pass@ip:port，直接按 Enter 跳过）："
+        read proxy
+        if [ -n "$proxy" ]; then
+            if [[ ! "$proxy" =~ ^[a-z]+://[a-zA-Z0-9]+:[a-zA-Z0-9]+@[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$ ]]; then
+                echo "警告：代理地址 $proxy 格式可能不正确，应为 protocol://user:pass@ip:port"
+            fi
+        fi
+        proxies+=("$proxy")
+
+        account_index=$((account_index + 1))
+    done
+
+    # 检查是否至少输入了一个账户
+    if [ ${#tokens[@]} -eq 0 ]; then
+        echo "错误：至少需要输入一个账户（Browser_ID 和 Token）才能继续"
+        exit 1
     fi
 
-    # 检查 accounts.json
-    if [ ! -f "accounts.json" ]; then
-        echo "未找到 accounts.json 文件，正在创建默认文件..."
-        cat << EOF > accounts.json
-{
-  "accounts": [
-    {
-      "token": "token1",
-      "proxy": "http://user:pass@proxy1:port"
-    },
-    {
-      "token": "token2",
-      "proxy": "http://user:pass@proxy2:port"
-    }
-  ]
-}
-EOF
-        echo "已创建 accounts.json 文件，请编辑文件并填入您的账户和代理信息"
-    else
-        echo "accounts.json 文件已存在，请确保已填入正确的账户信息"
-    fi
-
-    # 检查 proxy.txt
-    if [ ! -f "proxy.txt" ]; then
-        echo "未找到 proxy.txt 文件，正在创建默认文件..."
-        cat << EOF > proxy.txt
-# 请在此填入您的代理地址，每行一个
-# 示例：
-# http://user:pass@proxy1:port
-# http://proxy2:port
-EOF
-        echo "已创建 proxy.txt 文件，请编辑文件并填入您的代理地址（如果需要）"
-    else
-        echo "proxy.txt 文件已存在，请确保已填入正确的代理地址（如果需要）"
-    fi
-
-    # 提示用户检查配置文件
-    echo "请在运行程序前检查以下文件并填入必要信息："
-    echo "  - tokens.txt：填入您的 token 数据"
-    echo "  - accounts.json：填入账户和代理信息"
-    echo "  - proxy.txt：填入代理地址（可选）"
-    echo "您可以使用以下命令编辑文件："
-    echo "  nano $PROJECT_DIR/tokens.txt"
-    echo "  nano $PROJECT_DIR/accounts.json"
-    echo "  nano $PROJECT_DIR/proxy.txt"
-    echo "编辑完成后，重新运行脚本以启动程序。"
-    exit 0
+    # 生成 accounts.csv
+    echo "正在生成 accounts.csv 文件..."
+    echo "Name,Browser_ID,Token,Proxy" > accounts.csv
+    for i in "${!tokens[@]}"; do
+        name=${names[$i]}
+        browser_id=${browser_ids[$i]}
+        token=${tokens[$i]}
+        proxy=${proxies[$i]:-""}  # 如果 proxy 为空，使用空字符串
+        echo "$name,$browser_id,$token,$proxy" >> accounts.csv
+    done
+    echo "accounts.csv 已生成"
 }
 
 # 主流程
@@ -202,8 +203,8 @@ clone_or_update_project
 # 设置虚拟环境和依赖
 setup_environment
 
-# 检查配置文件
-check_config
+# 配置 accounts.csv
+configure_files
 
 # 运行项目
 echo "启动 AiGaea-BOT..."
