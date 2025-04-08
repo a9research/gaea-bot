@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# v1.1.2
+# v1.1.3
 
 # 定义项目目录和虚拟环境名称
 PROJECT_DIR="gaea-bot"
@@ -129,6 +129,7 @@ setup_environment() {
 
 # 函数：收集用户输入并生成 accounts.csv
 configure_files() {
+    echo "PROJECT_DIR 的值是: $PROJECT_DIR"
     cd "$PROJECT_DIR" || {
         echo "错误：无法进入目录 $PROJECT_DIR"
         exit 1
