@@ -7,7 +7,7 @@ from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from datetime import datetime
 from colorama import *
-import asyncio, uuid, time, json, os, pytz, csv, random
+import asyncio, time, os, pytz, csv, random
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -78,12 +78,6 @@ class AiGaea:
     def mask_account(self, account):
         mask_account = account[:3] + '*' * 3 + account[-3:]
         return mask_account
-        
-    def generate_random_browser_id(self, browser_id: str):
-        random_browser_id = str(uuid.uuid4())[8:]
-        if len(browser_id) == 32:
-            return browser_id
-        return browser_id[:8] + random_browser_id
 
     def print_message(self, account, proxy, color, message):
         proxy_display = proxy if proxy else "No Proxy"
@@ -226,9 +220,9 @@ class AiGaea:
                     continue
                 return self.print_message(username, proxy, Fore.RED, f"Complete Available Mission Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 
-    async def send_ping(self, token: str, random_browser_id: str, username: str, user_id: str, proxy=None, retries=5):
+    async def send_ping(self, token: str, browser_id: str, username: str, user_id: str, proxy=None, retries=5):
         url = "https://api.aigaea.net/api/network/ping"
-        data = json.dumps({"browser_id":random_browser_id, "timestamp":int(time.time()), "uid":user_id, "version":"2.0.2"})
+        data = json.dumps({"browser_id":browser_id, "timestamp":int(time.time()), "uid":user_id, "version":"2.0.2"})
         headers = {
             "Accept": "*/*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -313,7 +307,6 @@ class AiGaea:
             await asyncio.sleep(12 * 60 * 60)
 
     async def process_send_ping(self, token: str, browser_id: str, username: str, user_id: str, server_host: str, proxy=None):
-        random_browser_id = self.generate_random_browser_id(browser_id)
         while True:
             print(
                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
@@ -323,7 +316,7 @@ class AiGaea:
                 flush=True
             )
 
-            ping = await self.send_ping(token, random_browser_id, username, user_id, proxy)
+            ping = await self.send_ping(token, browser_id, username, user_id, proxy)
             if ping:
                 score = ping['score']
 
@@ -337,7 +330,7 @@ class AiGaea:
                     f"{Fore.WHITE + Style.BRIGHT}{server_host}{Style.RESET_ALL}"
                 )
 
-            wait_time = random.uniform(6 * 60, 12 * 60)  # Random wait between 12-18 minutes
+            wait_time = random.uniform(6 * 60, 12 * 60)  # Random wait between 6-12 minutes
             print(
                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
@@ -364,7 +357,13 @@ class AiGaea:
             return user, server_host
         
     async def process_accounts(self, account: dict, use_proxy: bool):
-        browser_id = account.get('Browser_ID')
+        # 从 CSV 获取 Browser_ID 并截取前八位
+        browser_id_full = account.get('Browser_ID')
+        if browser_id_full:
+            browser_id = browser_id_full[:8]  # 只取前八位
+        else:
+            browser_id = None
+
         token = account.get('Token')
         proxy = self.check_proxy_schemes(account.get('Proxy')) if use_proxy else None
         
