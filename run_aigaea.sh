@@ -1,222 +1,176 @@
 #!/bin/bash
 
-# v1.1.3
+# v1.1.4
 
-# 定义项目目录和虚拟环境名称
+# 定义变量
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
 PROJECT_DIR="gaea-bot"
 VENV_NAME="aigaea_venv"
 PYTHON_CMD="python3"
 MIN_VERSION="3.9"
 
-# 函数：检查并安装前置组件
-install_prerequisites() {
-    echo "检查和安装前置组件..."
-
-    # 检查是否为 root 用户（某些系统需要 sudo）
-    if [ "$EUID" -ne 0 ]; then
-        SUDO="sudo"
-    else
-        SUDO=""
+# 检查 Python 版本
+check_python_version() {
+    echo "检查 Python 版本..."
+    PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | grep -oP '\d+\.\d+')
+    if [ -z "$PYTHON_VERSION" ]; then
+        echo "错误：无法获取 Python 版本，请确保 $PYTHON_CMD 已正确安装"
+        exit 1
     fi
 
-    # 检查 Git
-    if ! command -v git &> /dev/null; then
-        echo "未找到 Git，正在安装..."
-        $SUDO apt-get update -y
-        $SUDO apt-get install -y git
-        if [ $? -ne 0 ]; then
-            echo "错误：Git 安装失败，请手动安装后再运行脚本"
-            exit 1
-        fi
-        echo "Git 安装成功"
-    else
-        echo "Git 已安装"
+    # 比较版本号
+    if [ "$(printf '%s\n' "$PYTHON_VERSION" "$MIN_VERSION" | sort -V | head -n1)" != "$MIN_VERSION" ]; then
+        echo "错误：Python 版本 $PYTHON_VERSION 不满足最低要求 $MIN_VERSION"
+        exit 1
     fi
-
-    # 检查 Python 3.9+
-    if ! command -v $PYTHON_CMD &> /dev/null; then
-        echo "未找到 Python，正在安装 Python 3.10..."
-        $SUDO apt-get update -y
-        $SUDO apt-get install -y python3.10 python3-pip python3.10-venv
-        if [ $? -ne 0 ]; then
-            echo "错误：Python 安装失败，请手动安装 Python 3.9 或更高版本"
-            exit 1
-        fi
-        PYTHON_CMD="python3.10"
-        echo "Python 3.10 安装成功"
-    else
-        PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
-        if [[ "$(printf '%s\n' "$MIN_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$MIN_VERSION" ]]; then
-            echo "当前 Python 版本 ($PYTHON_VERSION) 低于 3.9，正在安装 Python 3.10..."
-            $SUDO apt-get update -y
-            $SUDO apt-get install -y python3.10 python3-pip python3.10-venv
-            if [ $? -ne 0 ]; then
-                echo "错误：Python 3.10 安装失败，请手动安装"
-                exit 1
-            fi
-            PYTHON_CMD="python3.10"
-            echo "Python 3.10 安装成功"
-        else
-            echo "Python 已安装，版本为 $PYTHON_VERSION"
-        fi
-    fi
-
-    # 检查并安装 python3-venv
-    if ! $PYTHON_CMD -m venv --help &> /dev/null; then
-        echo "未找到 python3-venv 模块，正在安装 python3.${PYTHON_VERSION}-venv..."
-        $SUDO apt-get update -y
-        $SUDO apt-get install -y python3.${PYTHON_VERSION}-venv
-        if [ $? -ne 0 ]; then
-            echo "错误：python3-venv 安装失败，请手动运行以下命令安装："
-            echo "  $SUDO apt-get install python3.${PYTHON_VERSION}-venv"
-            exit 1
-        fi
-        echo "python3-venv 安装成功"
-    else
-        echo "python3-venv 已安装"
-    fi
+    echo "Python 版本 $PYTHON_VERSION 满足要求"
 }
 
-# 函数：克隆或更新项目
-clone_or_update_project() {
-    if [ -d "$PROJECT_DIR" ]; then
-        echo "更新现有项目..."
-        cd "$PROJECT_DIR"
-        git pull origin main
-        cd ..
-    else
-        echo "克隆项目..."
-        git clone https://github.com/a9research/gaea-bot.git
-    fi
-}
+# 创建并激活虚拟环境
+setup_venv() {
+    echo "设置虚拟环境 $VENV_NAME..."
 
-# 函数：设置虚拟环境和依赖
-setup_environment() {
-    cd "$PROJECT_DIR" || exit
-
-    # 创建虚拟环境
+    # 检查虚拟环境是否已存在
     if [ ! -d "$VENV_NAME" ]; then
-        echo "创建虚拟环境..."
+        echo "创建虚拟环境 $VENV_NAME..."
         $PYTHON_CMD -m venv "$VENV_NAME"
         if [ $? -ne 0 ]; then
-            echo "错误：虚拟环境创建失败，请检查 python3-venv 是否正确安装"
-            echo "尝试手动安装：$SUDO apt-get install python3.${PYTHON_VERSION}-venv"
+            echo "错误：无法创建虚拟环境 $VENV_NAME"
             exit 1
         fi
     fi
 
     # 激活虚拟环境
-    if [ -f "$VENV_NAME/bin/activate" ]; then
-        source "$VENV_NAME/bin/activate"
-        echo "虚拟环境已激活"
-    else
-        echo "错误：虚拟环境激活文件不存在，请检查虚拟环境是否创建成功"
-        exit 1
-    fi
-
-    # 升级 pip
-    echo "升级 pip..."
-    pip install --upgrade pip
-
-    # 安装项目依赖
-    echo "安装项目依赖..."
-    pip install -r requirements.txt
+    source "$VENV_NAME/bin/activate"
     if [ $? -ne 0 ]; then
-        echo "错误：依赖安装失败，请检查网络或 requirements.txt 文件"
+        echo "错误：无法激活虚拟环境 $VENV_NAME"
         exit 1
     fi
+    echo "虚拟环境 $VENV_NAME 已激活"
 }
 
-# 函数：收集用户输入并生成 accounts.csv
+# 检查并创建 PROJECT_DIR
+if [ ! -d "$PROJECT_DIR" ]; then
+    echo "目录 $PROJECT_DIR 不存在，正在创建..."
+    mkdir -p "$PROJECT_DIR"
+    if [ $? -ne 0 ]; then
+        echo "错误：无法创建目录 $PROJECT_DIR"
+        exit 1
+    fi
+fi
+
+# 切换到脚本所在目录
+pushd "$SCRIPT_DIR" > /dev/null || {
+    echo "错误：无法进入目录 $SCRIPT_DIR"
+    exit 1
+}
+
+# 安装依赖的函数
+install_requirements() {
+    echo "正在安装依赖..."
+
+    # 确保 pip 可用
+    if ! command -v pip >/dev/null 2>&1; then
+        echo "未找到 pip，正在安装..."
+        if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y python3-pip
+        elif command -v yum >/dev/null 2>&1; then
+            sudo yum install -y python3-pip
+        else
+            echo "错误：无法安装 pip，请手动安装"
+            exit 1
+        fi
+    fi
+
+    # 升级 pip 并安装依赖
+    pip install --upgrade pip
+    pip install aiohttp==3.9.* aiohttp-socks==0.8.* pyyaml==6.0.* async-timeout==4.0.* colorama==0.4.* attrs==23.2.* fake-useragent==1.5.* frozenlist==1.4.* multidict==6.0.* yarl==1.9.* aiohappyeyeballs==2.4.* aiosignal==1.3.* --force-reinstall
+}
+
+# 配置文件的函数
 configure_files() {
-    echo "PROJECT_DIR 的值是: $PROJECT_DIR"
-    cd "$PROJECT_DIR" || {
+    pushd "$PROJECT_DIR" > /dev/null || {
         echo "错误：无法进入目录 $PROJECT_DIR"
+        popd > /dev/null
         exit 1
     }
 
-    echo "请配置您的账户信息（输入完成后按 Enter 继续）"
+    # 配置文件的逻辑
+    echo "请输入要登录的账号/密码（输入完成后按 Enter 键继续）"
     declare -a names
     declare -a browser_ids
     declare -a tokens
     declare -a proxies
-    account_index=1
+    declare -a index=1
 
     while true; do
-        echo "请输入第 $account_index 个账户的名称（用于标记，直接按 Enter 结束输入）："
-        read name
+        read -p "用户名（输入完成后按 Enter 键继续）: " name
         if [ -z "$name" ]; then
             break
         fi
+        read -p "浏览器ID（输入完成后按 Enter 键继续）: " browser_id
+        read -p "Token（输入完成后按 Enter 键继续）: " token
+        read -p "代理（输入完成后按 Enter 键继续）: " proxy
+
         names+=("$name")
-
-        echo "请输入第 $account_index 个账户的 Browser_ID（前 8 位）："
-        read browser_id
-        if [ ${#browser_id} -ne 8 ]; then
-            echo "错误：Browser_ID 必须为 8 位，请重新输入"
-            continue
-        fi
         browser_ids+=("$browser_id")
-
-        echo "请输入第 $account_index 个账户的 Token："
-        read token
-        if [ -z "$token" ]; then
-            echo "错误：Token 不能为空，请重新输入"
-            continue
-        fi
         tokens+=("$token")
-
-        echo "请输入第 $account_index 个账户的代理地址（格式：protocol://user:pass@ip:port，直接按 Enter 跳过）："
-        read proxy
-        if [ -n "$proxy" ]; then
-            if [[ ! "$proxy" =~ ^[a-z]+://[a-zA-Z0-9]+:[a-zA-Z0-9]+@[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+$ ]]; then
-                echo "警告：代理地址 $proxy 格式可能不正确，应为 protocol://user:pass@ip:port"
-            fi
-        fi
         proxies+=("$proxy")
-
-        account_index=$((account_index + 1))
+        index=$((index + 1))
     done
 
-    # 检查是否至少输入了一个账户
-    if [ ${#tokens[@]} -eq 0 ]; then
-        echo "错误：至少需要输入一个账户（Browser_ID 和 Token）才能继续"
+    if [ ${#names[@]} -eq 0 ]; then
+        echo "错误：未输入任何账号信息"
+        popd > /dev/null
         exit 1
     fi
 
-    # 生成 accounts.csv
-    echo "正在生成 accounts.csv 文件..."
-    echo "Name,Browser_ID,Token,Proxy" > accounts.csv
-    for i in "${!tokens[@]}"; do
-        name=${names[$i]}
-        browser_id=${browser_ids[$i]}
-        token=${tokens[$i]}
-        proxy=${proxies[$i]:-""}  # 如果 proxy 为空，使用空字符串
-        echo "$name,$browser_id,$token,$proxy" >> accounts.csv
+    # 写入 accounts.csv
+    echo "name,browser_id,token,proxy" > accounts.csv
+    for ((i = 0; i < ${#names[@]}; i++)); do
+        echo "${names[$i]},${browser_ids[$i]},${tokens[$i]},${proxies[$i]}" >> accounts.csv
     done
-    echo "accounts.csv 已生成"
+
+    popd > /dev/null
 }
 
-# 主流程
-echo "开始运行 AiGaea-BOT 脚本..."
+# 运行程序的函数
+run_program() {
+    pushd "$PROJECT_DIR" > /dev/null || {
+        echo "错误：无法进入目录 $PROJECT_DIR"
+        popd > /dev/null
+        exit 1
+    }
 
-# 安装前置组件
-install_prerequisites
+    # 检查 accounts.csv 是否存在
+    if [ ! -f "accounts.csv" ]; then
+        echo "错误：未找到 accounts.csv 文件"
+        popd > /dev/null
+        exit 1
+    fi
 
-# 克隆或更新项目
-clone_or_update_project
+    # 运行 Python 脚本
+    python main.py
 
-# 设置虚拟环境和依赖
-setup_environment
+    popd > /dev/null
+}
 
-# 配置 accounts.csv
-configure_files
+# 主逻辑
+main() {
+    check_python_version
+    setup_venv
+    install_requirements
+    configure_files
+    run_program
+}
 
-# 运行项目
-echo "启动 AiGaea-BOT..."
-$PYTHON_CMD bot.py
+# 捕获中断信号
+trap 'echo "程序被中断"; deactivate 2>/dev/null; popd > /dev/null; exit 1' SIGINT SIGTERM
 
-# 退出虚拟环境
-deactivate
+# 运行主函数
+main
 
-echo "脚本执行完成"
+# 清理：退出虚拟环境并恢复目录
+deactivate 2>/dev/null
+popd > /dev/null
