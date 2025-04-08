@@ -125,15 +125,69 @@ setup_environment() {
     fi
 }
 
-# 函数：检查和提示配置文件
+# 函数：检查和初始化配置文件
 check_config() {
+    # 检查 tokens.txt
     if [ ! -f "tokens.txt" ]; then
-        echo "警告：未找到 tokens.txt 文件，请创建并填写您的 token 数据"
-        echo "示例格式（每行一个 token）："
-        echo "token1"
-        echo "token2"
-        echo "您可以在脚本运行后手动创建 tokens.txt 文件"
+        echo "未找到 tokens.txt 文件，正在创建默认文件..."
+        cat << EOF > tokens.txt
+# 请在此填入您的 token，每行一个
+# 示例：
+# token1
+# token2
+EOF
+        echo "已创建 tokens.txt 文件，请编辑文件并填入您的 token 数据"
+    else
+        echo "tokens.txt 文件已存在，请确保已填入正确的 token 数据"
     fi
+
+    # 检查 accounts.json
+    if [ ! -f "accounts.json" ]; then
+        echo "未找到 accounts.json 文件，正在创建默认文件..."
+        cat << EOF > accounts.json
+{
+  "accounts": [
+    {
+      "token": "token1",
+      "proxy": "http://user:pass@proxy1:port"
+    },
+    {
+      "token": "token2",
+      "proxy": "http://user:pass@proxy2:port"
+    }
+  ]
+}
+EOF
+        echo "已创建 accounts.json 文件，请编辑文件并填入您的账户和代理信息"
+    else
+        echo "accounts.json 文件已存在，请确保已填入正确的账户信息"
+    fi
+
+    # 检查 proxy.txt
+    if [ ! -f "proxy.txt" ]; then
+        echo "未找到 proxy.txt 文件，正在创建默认文件..."
+        cat << EOF > proxy.txt
+# 请在此填入您的代理地址，每行一个
+# 示例：
+# http://user:pass@proxy1:port
+# http://proxy2:port
+EOF
+        echo "已创建 proxy.txt 文件，请编辑文件并填入您的代理地址（如果需要）"
+    else
+        echo "proxy.txt 文件已存在，请确保已填入正确的代理地址（如果需要）"
+    fi
+
+    # 提示用户检查配置文件
+    echo "请在运行程序前检查以下文件并填入必要信息："
+    echo "  - tokens.txt：填入您的 token 数据"
+    echo "  - accounts.json：填入账户和代理信息"
+    echo "  - proxy.txt：填入代理地址（可选）"
+    echo "您可以使用以下命令编辑文件："
+    echo "  nano $PROJECT_DIR/tokens.txt"
+    echo "  nano $PROJECT_DIR/accounts.json"
+    echo "  nano $PROJECT_DIR/proxy.txt"
+    echo "编辑完成后，重新运行脚本以启动程序。"
+    exit 0
 }
 
 # 主流程
