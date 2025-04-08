@@ -7,9 +7,16 @@ from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from datetime import datetime
 from colorama import *
-import asyncio, time, os, pytz, csv, random, json
+import asyncio, time, os, pytz, csv, random, json, logging  # 添加 logging 模块
 
 wib = pytz.timezone('Asia/Jakarta')
+
+# 配置日志记录
+logging.basicConfig(
+    filename='account_errors.log',
+    level=logging.ERROR,
+    format='%(asctime)s - Account: %(account)s - Proxy: %(proxy)s - Error: %(message)s'
+)
 
 class AiGaea:
     def __init__(self) -> None:
@@ -246,6 +253,7 @@ class AiGaea:
                         return result['data']
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
+                    self.log(f"{Fore.YELLOW}Retrying ping for {username} (attempt {attempt + 1}/{retries})...{Style.RESET_ALL}")
                     await asyncio.sleep(5)
                     continue
                 self.print_message(username, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
@@ -253,82 +261,94 @@ class AiGaea:
             
     async def process_user_earning(self, token: str, username: str, proxy=None):
         while True:
-            earning = await self.user_earning(token, username, proxy)
-            if earning:
-                today = earning['today_total']
-                total = earning['total_total']
-                uptime = earning['today_uptime']
+            try:
+                earning = await self.user_earning(token, username, proxy)
+                if earning:
+                    today = earning['today_total']
+                    total = earning['total_total']
+                    uptime = earning['today_uptime']
 
-                self.print_message(username, proxy, Fore.WHITE,
-                    f"Earning Today {today} PTS "
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} Earning Total {total} PTS {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Uptime: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}Today {uptime} Minutes{Style.RESET_ALL}"
-                )
+                    self.print_message(username, proxy, Fore.WHITE,
+                        f"Earning Today {today} PTS "
+                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} Earning Total {total} PTS {Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT} Uptime: {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}Today {uptime} Minutes{Style.RESET_ALL}"
+                    )
+            except Exception as e:
+                logging.error("User Earning Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
+                self.print_message(username, proxy, Fore.RED, f"User Earning Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
 
             await asyncio.sleep(15 * 60)
 
     async def process_user_missions(self, token: str, username: str, proxy=None):
         while True:
-            missions = await self.mission_lists(token, username, proxy)
-            if missions:
-                completed = False
-                for mission in missions:
-                    mission_id = str(mission['id'])
-                    title = mission['title']
-                    reward = mission['points']
-                    status = mission['status']
+            try:
+                missions = await self.mission_lists(token, username, proxy)
+                if missions:
+                    completed = False
+                    for mission in missions:
+                        mission_id = str(mission['id'])
+                        title = mission['title']
+                        reward = mission['points']
+                        status = mission['status']
 
-                    if mission and status == "AVAILABLE":
-                        complete = await self.complete_mission(token, username, mission_id, proxy)
-                        if complete:
-                            self.print_message(username, proxy, Fore.WHITE,
-                                f"Mission {title}"
-                                f"{Fore.GREEN + Style.BRIGHT} Is Completed {Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT}{reward} PTS{Style.RESET_ALL}"
-                            )
+                        if mission and status == "AVAILABLE":
+                            complete = await self.complete_mission(token, username, mission_id, proxy)
+                            if complete:
+                                self.print_message(username, proxy, Fore.WHITE,
+                                    f"Mission {title}"
+                                    f"{Fore.GREEN + Style.BRIGHT} Is Completed {Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{reward} PTS{Style.RESET_ALL}"
+                                )
+                            else:
+                                self.print_message(username, proxy, Fore.WHITE,
+                                    f"Mission {title} "
+                                    f"{Fore.RED + Style.BRIGHT}Isn't Completed{Style.RESET_ALL}"
+                                )
                         else:
-                            self.print_message(username, proxy, Fore.WHITE,
-                                f"Mission {title} "
-                                f"{Fore.RED + Style.BRIGHT}Isn't Completed{Style.RESET_ALL}"
-                            )
-                    else:
-                        completed = True
+                            completed = True
 
-                if completed:
-                    self.print_message(username, proxy, Fore.GREEN,
-                        "All Available Mission Is Completed"
-                    )
-                
+                    if completed:
+                        self.print_message(username, proxy, Fore.GREEN,
+                            "All Available Mission Is Completed"
+                        )
+            except Exception as e:
+                logging.error("User Missions Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
+                self.print_message(username, proxy, Fore.RED, f"User Missions Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
             await asyncio.sleep(12 * 60 * 60)
 
     async def process_send_ping(self, token: str, browser_id: str, username: str, user_id: str, server_host: str, proxy=None):
         while True:
-            print(
-                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.BLUE + Style.BRIGHT}Try to Sent Ping...{Style.RESET_ALL}",
-                end="\r",
-                flush=True
-            )
-
-            ping = await self.send_ping(token, browser_id, username, user_id, proxy)
-            if ping:
-                score = ping['score']
-
-                self.print_message(username, proxy, Fore.GREEN,
-                    "PING Success"
-                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT}Network Score:{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} {score} {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.CYAN + Style.BRIGHT} Server Host: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}{server_host}{Style.RESET_ALL}"
+            try:
+                print(
+                    f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                    f"{Fore.BLUE + Style.BRIGHT}Try to Sent Ping...{Style.RESET_ALL}",
+                    end="\r",
+                    flush=True
                 )
+
+                ping = await self.send_ping(token, browser_id, username, user_id, proxy)
+                if ping:
+                    score = ping['score']
+
+                    self.print_message(username, proxy, Fore.GREEN,
+                        "PING Success"
+                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT}Network Score:{Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT} {score} {Style.RESET_ALL}"
+                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                        f"{Fore.CYAN + Style.BRIGHT} Server Host: {Style.RESET_ALL}"
+                        f"{Fore.WHITE + Style.BRIGHT}{server_host}{Style.RESET_ALL}"
+                    )
+            except Exception as e:
+                logging.error("Send Ping Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
+                self.print_message(username, proxy, Fore.RED, f"Send Ping Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
 
             wait_time = random.uniform(6 * 60, 12 * 60)  # Random wait between 6-12 minutes
             print(
@@ -341,23 +361,29 @@ class AiGaea:
             await asyncio.sleep(wait_time)
 
     async def get_user_data(self, token: str, proxy=None):
+        max_retries = 3
+        attempt = 0
         user = None
-        while user is None:
+        while user is None and attempt < max_retries:
             user = await self.user_data(token, proxy)
             if not user:
+                attempt += 1
+                await asyncio.sleep(5)
                 continue
+        if user is None:
+            self.log(f"{Fore.RED}Failed to get user data after {max_retries} attempts.{Style.RESET_ALL}")
+            return None, None
 
-            self.print_message(self.mask_account(token), proxy, Fore.GREEN, "GET User ID Success")
+        self.print_message(self.mask_account(token), proxy, Fore.GREEN, "GET User ID Success")
 
-            server_host = "Unknown"
-            ip_data = await self.user_ip(token, user['name'], proxy)
-            if ip_data:
-                server_host = ip_data['host']
+        server_host = "Unknown"
+        ip_data = await self.user_ip(token, user['name'], proxy)
+        if ip_data:
+            server_host = ip_data['host']
 
-            return user, server_host
+        return user, server_host
         
     async def process_accounts(self, account: dict, use_proxy: bool):
-        # 从 CSV 获取 Browser_ID 并截取前八位
         browser_id_full = account.get('Browser_ID')
         if browser_id_full:
             browser_id = browser_id_full[:8]  # 只取前八位
@@ -376,16 +402,20 @@ class AiGaea:
         self.log(f"{Fore.YELLOW}Initial delay for {account.get('Name')}: {self.format_seconds(initial_delay)}{Style.RESET_ALL}")
         await asyncio.sleep(initial_delay)
 
-        user, server_host = await self.get_user_data(token, proxy)
-        if user and server_host:
-            username = user['name']
-            user_id = user['uid']
+        try:
+            user, server_host = await self.get_user_data(token, proxy)
+            if user and server_host:
+                username = user['name']
+                user_id = user['uid']
 
-            tasks = []
-            tasks.append(self.process_user_earning(token, username, proxy))
-            tasks.append(self.process_user_missions(token, username, proxy))
-            tasks.append(self.process_send_ping(token, browser_id, username, user_id, server_host, proxy))
-            await asyncio.gather(*tasks)
+                tasks = []
+                tasks.append(self.process_user_earning(token, username, proxy))
+                tasks.append(self.process_user_missions(token, username, proxy))
+                tasks.append(self.process_send_ping(token, browser_id, username, user_id, server_host, proxy))
+                await asyncio.gather(*tasks)
+        except Exception as e:
+            logging.error("Process Account Failed", extra={"account": account.get('Name'), "proxy": proxy if proxy else "No Proxy", "message": str(e)})
+            self.log(f"{Fore.RED}Error processing account {account.get('Name')}: {e}{Style.RESET_ALL}")
 
     async def main(self):
         try:
