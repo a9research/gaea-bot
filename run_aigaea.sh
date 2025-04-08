@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# v1.1
+# v1.1.1
 
 # 定义项目目录和虚拟环境名称
-PROJECT_DIR="AiGaea-BOT"
+PROJECT_DIR="gaea-bot"
 VENV_NAME="aigaea_venv"
 PYTHON_CMD="python3"
 MIN_VERSION="3.9"
