@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# v1.1.11
+# v1.1.12
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
@@ -178,6 +178,7 @@ configure_files() {
     declare -a names
     declare -a browser_ids
     declare -a tokens
+    declare -a uids
     declare -a proxies
     account_index=1
 
@@ -205,6 +206,14 @@ configure_files() {
         fi
         tokens+=("$token")
 
+        echo "请输入第 $account_index 个账户的 UID："
+        read uid
+        if [ -z "$uid" ]; then
+            echo "错误：UID 不能为空，请重新输入"
+            continue
+        fi
+        uids+=("$uid")
+
         echo "请输入第 $account_index 个账户的代理地址（格式：protocol://user:pass@ip:port，直接按 Enter 跳过）："
         read proxy
         if [ -n "$proxy" ]; then
@@ -219,20 +228,21 @@ configure_files() {
 
     # 检查是否至少输入了一个账户
     if [ ${#tokens[@]} -eq 0 ]; then
-        echo "错误：至少需要输入一个账户（Browser_ID 和 Token）才能继续"
+        echo "错误：至少需要输入一个账户（Browser_ID、Token 和 UID）才能继续"
         popd > /dev/null
         exit 1
     fi
 
     # 生成 accounts.csv
     echo "正在生成 accounts.csv 文件..."
-    echo "Name,Browser_ID,Token,Proxy" > accounts.csv
+    echo "Name,Browser_ID,Token,UID,Proxy" > accounts.csv
     for i in "${!tokens[@]}"; do
         name=${names[$i]}
         browser_id=${browser_ids[$i]}
         token=${tokens[$i]}
+        uid=${uids[$i]}
         proxy=${proxies[$i]:-""}  # 如果 proxy 为空，使用空字符串
-        echo "$name,$browser_id,$token,$proxy" >> accounts.csv
+        echo "$name,$browser_id,$token,$uid,$proxy" >> accounts.csv
     done
     echo "accounts.csv 已生成"
 

@@ -82,48 +82,11 @@ class AiGaea:
         minutes, seconds = divmod(remainder, 60)
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
     
-    def setup_accounts(self):
-        """Setup new accounts and save to CSV"""
-        filename = "accounts.csv"
-        accounts_to_add = []
-        
-        self.clear_terminal()
-        self.log(f"{Fore.GREEN + Style.BRIGHT}Account Setup Wizard{Style.RESET_ALL}")
-        
-        while True:
-            account = {}
-            account['Name'] = input("Enter Account Name: ").strip()
-            account['Browser_ID'] = input("Enter Browser ID: ").strip()
-            account['Token'] = input("Enter Token: ").strip()
-            account['Proxy'] = input("Enter Proxy (leave empty for none): ").strip()
-            account['UID'] = input("Enter UID: ").strip()
-            
-            accounts_to_add.append(account)
-            
-            more = input("\nAdd another account? (y/n): ").lower().strip()
-            if more != 'y':
-                break
-        
-        # Save to CSV
-        fieldnames = ['Name', 'Browser_ID', 'Token', 'Proxy', 'UID']
-        try:
-            with open(filename, 'w', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(accounts_to_add)
-            self.log(f"{Fore.GREEN + Style.BRIGHT}Successfully saved {len(accounts_to_add)} accounts to {filename}{Style.RESET_ALL}")
-            return True
-        except Exception as e:
-            self.log(f"{Fore.RED + Style.BRIGHT}Error saving accounts: {e}{Style.RESET_ALL}")
-            return False
-
     def load_accounts(self):
         filename = "accounts.csv"
         try:
             if not os.path.exists(filename):
-                self.log(f"{Fore.RED}File {filename} Not Found. Starting account setup...{Style.RESET_ALL}")
-                if self.setup_accounts():
-                    return self.load_accounts()  # Reload after setup
+                self.log(f"{Fore.RED}File {filename} Not Found.{Style.RESET_ALL}")
                 return
 
             with open(filename, 'r', newline='') as file:
@@ -131,9 +94,6 @@ class AiGaea:
                 expected_fields = ['Name', 'Browser_ID', 'Token', 'Proxy', 'UID']
                 if reader.fieldnames != expected_fields:
                     self.log(f"{Fore.RED}Invalid CSV format. Required fields: {', '.join(expected_fields)}{Style.RESET_ALL}")
-                    self.log(f"{Fore.YELLOW}Starting account setup...{Style.RESET_ALL}")
-                    if self.setup_accounts():
-                        return self.load_accounts()  # Reload after setup
                     return
                 self.accounts = [acc for acc in reader if acc['UID'] not in self.paused_accounts]
         except Exception as e:
@@ -227,10 +187,10 @@ class AiGaea:
                     self.save_paused_account(account_data)
                     return
                 if earning:
-                    total_points = earning['total_total']
-                    today_points = earning['today_total']
-                    uptime_minutes = earning['today_uptime']
-                    uptime_hours = uptime_minutes / 60
+                    total_points = earning['total_total']  # Use total_total for Earning Total
+                    today_points = earning['today_total']  # Use today_total for Today Total
+                    uptime_minutes = earning['today_uptime']  # Uptime in minutes
+                    uptime_hours = uptime_minutes / 60  # Convert to hours
                     self.print_message(username, proxy, Fore.WHITE,
                         f"Earning Total {total_points} PTS "
                         f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
@@ -362,6 +322,7 @@ class AiGaea:
             tasks = []
             tasks.append(self.process_user_earning(token, username, account, proxy))
             tasks.append(self.process_send_ping(token, browser_id, username, user_id, account, proxy, ping_type="extension"))
+            # tasks.append(self.process_send_ping(token, browser_id, username, user_id, account, proxy, ping_type="webpage"))
             await asyncio.gather(*tasks)
         except Exception as e:
             logging.error("Process Account Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
