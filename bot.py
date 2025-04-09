@@ -158,7 +158,7 @@ class AiGaea:
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "en-US",
             "Authorization": f"Bearer {token}",
-            "Content-Length": 117,
+            "Content-Length": "117",
             "Content-Type": "application/json",
             "Origin": "chrome-extension://cpjicfogbgognnifjgmenmaldnmeeeib",
             "Priority": "u=1, i",
