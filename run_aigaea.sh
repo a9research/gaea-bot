@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# v1.1.12
+# v1.1.13
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
@@ -235,15 +235,21 @@ configure_files() {
 
     # 生成 accounts.csv
     echo "正在生成 accounts.csv 文件..."
-    echo "Name,Browser_ID,Token,UID,Proxy" > accounts.csv
+    echo "Name,Browser_ID,Token,Proxy,UID" > accounts.csv
     for i in "${!tokens[@]}"; do
-        name=${names[$i]}
-        browser_id=${browser_ids[$i]}
-        token=${tokens[$i]}
-        uid=${uids[$i]}
-        proxy=${proxies[$i]:-""}  # 如果 proxy 为空，使用空字符串
-        echo "$name,$browser_id,$token,$uid,$proxy" >> accounts.csv
+        name="${names[$i]//,/}"      # 移除输入中的逗号以避免破坏 CSV
+        browser_id="${browser_ids[$i]//,/}"
+        token="${tokens[$i]//,/}"
+        proxy="${proxies[$i]:-""}"   # 如果 proxy 为空，使用空字符串
+        uid="${uids[$i]//,/}"
+        # 调试输出每行内容
+        echo "生成第 $((i+1)) 行: $name,$browser_id,$token,$proxy,$uid"
+        echo "$name,$browser_id,$token,$proxy,$uid" >> accounts.csv
     done
+
+    # 验证生成的文件
+    echo "生成的文件内容如下："
+    cat accounts.csv
     echo "accounts.csv 已生成"
 
     popd > /dev/null
