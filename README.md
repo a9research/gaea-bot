@@ -99,3 +99,59 @@ bash
 source AiGaea-BOT/aigaea_venv/bin/activate
 pip install -r AiGaea-BOT/requirements.txt
 
+
+
+如果我获取了新的token后应该怎么处理？用中文回答
+
+如果你获取了新的token后，想要继续使用之前被暂停的账号，可以按照以下步骤处理：
+更新暂停账号的token：
+打开 paused_accounts.json 文件，找到对应账号的记录（通过 UID 或 Name 识别）。
+
+将其中的 "Token" 字段替换为新获取的token。
+
+保存文件。
+
+将账号移回活跃状态：
+有两种方法可以选择：
+方法一：手动编辑文件
+从 paused_accounts.json 中删除该账号的记录。
+
+确保 accounts.csv 中仍然包含该账号的信息（如果之前被移除，需要手动添加回去）。
+
+方法二：程序自动处理
+你可以修改代码，添加一个功能来检测 paused_accounts.json 中的账号是否有了新的token，然后自动将其移回活跃状态。不过当前代码没有这个功能，需要额外开发。
+
+重新运行程序：
+运行程序时，它会从 accounts.csv 加载账号，而不会加载 paused_accounts.json 中仍存在的账号。
+
+如果你已经从 paused_accounts.json 中移除了该账号的记录，并且 accounts.csv 中有正确的token，程序会正常处理这个账号。
+
+示例操作
+假设 paused_accounts.json 中有以下内容：
+json
+
+{
+    "UID123": {
+        "Name": "user1",
+        "Browser_ID": "browser123",
+        "Token": "old_expired_token",
+        "Proxy": "http://proxy.example.com",
+        "UID": "UID123",
+        "paused_at": "04/08/25 12:00:00 WIB",
+        "reason": "Token Expired (401)"
+    }
+}
+
+你获取了新token，比如 new_valid_token。
+
+编辑 paused_accounts.json，将 "Token": "old_expired_token" 改为 "Token": "new_valid_token"。
+
+然后删除整个 "UID123" 的记录。
+
+确保 accounts.csv 中有这一行：
+
+Name,Browser_ID,Token,Proxy,UID
+user1,browser123,new_valid_token,http://proxy.example.com,UID123
+
+重新运行程序，账号 user1 就会恢复正常运行。
+
