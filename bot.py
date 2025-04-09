@@ -31,6 +31,31 @@ class AiGaea:
             "User-Agent": FakeUserAgent().random
         }
         self.accounts = []
+        self.paused_accounts_file = "paused_accounts.json"
+        self.paused_accounts = self.load_paused_accounts()
+
+    def load_paused_accounts(self):
+        try:
+            if os.path.exists(self.paused_accounts_file):
+                with open(self.paused_accounts_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            print(f"Error loading paused accounts: {e}")
+            return {}
+
+    def save_paused_account(self, account_data):
+        self.paused_accounts[account_data['UID']] = {
+            'Name': account_data['Name'],
+            'Browser_ID': account_data['Browser_ID'],
+            'Token': account_data['Token'],
+            'Proxy': account_data['Proxy'],
+            'UID': account_data['UID'],
+            'paused_at': datetime.now().astimezone(wib).strftime('%x %X %Z'),
+            'reason': 'Token Expired (401)'
+        }
+        with open(self.paused_accounts_file, 'w') as f:
+            json.dump(self.paused_accounts, f, indent=4)
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -70,7 +95,7 @@ class AiGaea:
                 if reader.fieldnames != expected_fields:
                     self.log(f"{Fore.RED}Invalid CSV format. Required fields: {', '.join(expected_fields)}{Style.RESET_ALL}")
                     return
-                self.accounts = list(reader)
+                self.accounts = [acc for acc in reader if acc['UID'] not in self.paused_accounts]
         except Exception as e:
             self.log(f"{Fore.RED}Error loading accounts: {e}{Style.RESET_ALL}")
             return
@@ -124,7 +149,6 @@ class AiGaea:
         url = "https://api.aigaea.net/api/reward/era"
         headers = {
             **self.headers,
-            "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "en-US",
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
@@ -139,26 +163,32 @@ class AiGaea:
                         response.raise_for_status()
                         result = await response.json()
                         return result['data']
-            except (Exception, ClientResponseError) as e:
+            except ClientResponseError as e:
+                if e.status == 401:
+                    return "TOKEN_EXPIRED"
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                return self.print_message(username, proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+            except Exception as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
                 return self.print_message(username, proxy, Fore.RED, f"GET Earning Data Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 
-    async def send_ping(self, token: str, browser_id: str, username: str, user_id: str, proxy=None, retries=5):
+    async def send_ping(self, token: str, browser_id: str, username: str, user_id: str, proxy=None, retries=2):
         url = "https://api.aigaea.net/api/network/ping"
         data = json.dumps({
             "browser_id": browser_id,
-            "timestamp": int(time.time()),
+            "timestamp": int(time.time()),  
             "uid": user_id,
             "version": "3.0.1"
         })
         headers = {
             "Accept": "*/*",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "en-US",
             "Authorization": f"Bearer {token}",
-            "Content-Length": "117",
+            "Content-Length": str(len(data)),
             "Content-Type": "application/json",
             "Origin": "chrome-extension://cpjicfogbgognnifjgmenmaldnmeeeib",
             "Priority": "u=1, i",
@@ -174,9 +204,28 @@ class AiGaea:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
                         response.raise_for_status()
-                        result = await response.json()
+                        content_type = response.headers.get('Content-Type', '')
+                        text = await response.text(encoding=None)
+                        self.log(f"{Fore.YELLOW}Raw response for {username}: {text[:100]}{Style.RESET_ALL}")
+                        if 'application/json' not in content_type.lower():
+                            raise ValueError(f"Response is not JSON: {text[:100]}")
+                        try:
+                            result = json.loads(text)
+                        except UnicodeDecodeError as e:
+                            self.log(f"{Fore.YELLOW}UTF-8 decode failed, trying Latin-1 for {username}{Style.RESET_ALL}")
+                            text = await response.text(encoding='latin-1')
+                            result = json.loads(text)
                         return result['data']
-            except (Exception, ClientResponseError) as e:
+            except ClientResponseError as e:
+                if e.status == 401:
+                    return "TOKEN_EXPIRED"
+                if attempt < retries - 1:
+                    self.log(f"{Fore.YELLOW}Retrying ping for {username} (attempt {attempt + 1}/{retries})...{Style.RESET_ALL}")
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+            except Exception as e:
                 if attempt < retries - 1:
                     self.log(f"{Fore.YELLOW}Retrying ping for {username} (attempt {attempt + 1}/{retries})...{Style.RESET_ALL}")
                     await asyncio.sleep(5)
@@ -184,14 +233,17 @@ class AiGaea:
                 self.print_message(username, proxy, Fore.RED, f"PING Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 return None
 
-    async def process_user_earning(self, token: str, username: str, proxy=None):
+    async def process_user_earning(self, token: str, username: str, account_data: dict, proxy=None):
         while True:
             try:
                 earning = await self.user_earning(token, username, proxy)
-                if earning and len(earning) >= 2:  # 确保有第二组数据
-                    total_points = earning[1]['total_points']  # 取第二组的 total_points
-                    uptime = earning[1]['total_uptime']  # 取第二组的 total_uptime
-
+                if earning == "TOKEN_EXPIRED":
+                    self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
+                    self.save_paused_account(account_data)
+                    return
+                if earning and len(earning) >= 2:
+                    total_points = earning[1]['total_points']
+                    uptime = earning[1]['total_uptime']
                     self.print_message(username, proxy, Fore.WHITE,
                         f"Earning Total {total_points} PTS "
                         f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
@@ -204,7 +256,7 @@ class AiGaea:
 
             await asyncio.sleep(15 * 60)
 
-    async def process_send_ping(self, token: str, browser_id: str, username: str, user_id: str, proxy=None):
+    async def process_send_ping(self, token: str, browser_id: str, username: str, user_id: str, account_data: dict, proxy=None):
         while True:
             try:
                 print(
@@ -216,9 +268,12 @@ class AiGaea:
                 )
 
                 ping = await self.send_ping(token, browser_id, username, user_id, proxy)
+                if ping == "TOKEN_EXPIRED":
+                    self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
+                    self.save_paused_account(account_data)
+                    return
                 if ping:
                     score = ping['score']
-
                     self.print_message(username, proxy, Fore.GREEN,
                         "PING Success"
                         f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
@@ -229,7 +284,7 @@ class AiGaea:
                 logging.error("Send Ping Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
                 self.print_message(username, proxy, Fore.RED, f"Send Ping Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
 
-            wait_time = 10 * 60  # 固定10分钟
+            wait_time = 10 * 60
             print(
                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
@@ -250,15 +305,15 @@ class AiGaea:
             self.log(f"{Fore.RED}Missing required fields (Token, Browser_ID, Name, or UID) for account {username or 'unknown'}{Style.RESET_ALL}")
             return
 
-        # Add random initial delay (0-200 seconds)
-        initial_delay = random.uniform(0, 200)
+        # Add random initial delay (0-100 seconds)
+        initial_delay = random.uniform(0, 100)
         self.log(f"{Fore.YELLOW}Initial delay for {username}: {self.format_seconds(initial_delay)}{Style.RESET_ALL}")
         await asyncio.sleep(initial_delay)
 
         try:
             tasks = []
-            tasks.append(self.process_user_earning(token, username, proxy))
-            tasks.append(self.process_send_ping(token, browser_id, username, user_id, proxy))
+            tasks.append(self.process_user_earning(token, username, account, proxy))
+            tasks.append(self.process_send_ping(token, browser_id, username, user_id, account, proxy))
             await asyncio.gather(*tasks)
         except Exception as e:
             logging.error("Process Account Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
@@ -279,6 +334,10 @@ class AiGaea:
             self.log(
                 f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT}{len(self.accounts)}{Style.RESET_ALL}"
+            )
+            self.log(
+                f"{Fore.YELLOW + Style.BRIGHT}Paused Accounts: {Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}{len(self.paused_accounts)}{Style.RESET_ALL}"
             )
 
             self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
