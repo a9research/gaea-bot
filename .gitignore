@@ -75,3 +75,4 @@ proxy.txt
 # 其他
 *.out
 *.prof
+*.txt
