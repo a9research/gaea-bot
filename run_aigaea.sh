@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# v1.1.15
+# v1.1.13
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
 PROJECT_DIR="gaea-bot"
 VENV_NAME="aigaea_venv"
-PYTHON_CMD="python3"  # 默认命令，稍后会动态调整
+PYTHON_CMD="python3"
 MIN_VERSION="3.9"
 
 # 函数：检查并安装前置组件
@@ -36,22 +36,21 @@ install_prerequisites() {
 
     # 检查 Python 3.9+
     if ! command -v $PYTHON_CMD &> /dev/null; then
-        echo "未找到 Python，正在尝试安装 Python 3.10..."
+        echo "未找到 Python，正在安装 Python 3.10..."
         $SUDO apt-get update -y
-        $SUDO apt-get install -y python3.10 python3.10-pip python3.10-venv
+        $SUDO apt-get install -y python3.10 python3-pip python3.10-venv
         if [ $? -ne 0 ]; then
-            echo "错误：Python 3.10 安装失败，请手动安装 Python 3.9 或更高版本"
+            echo "错误：Python 安装失败，请手动安装 Python 3.9 或更高版本"
             exit 1
         fi
         PYTHON_CMD="python3.10"
         echo "Python 3.10 安装成功"
     else
         PYTHON_VERSION=$($PYTHON_CMD --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
-        echo "当前 Python 版本: $PYTHON_VERSION (通过 $PYTHON_CMD)"
         if [[ "$(printf '%s\n' "$MIN_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$MIN_VERSION" ]]; then
             echo "当前 Python 版本 ($PYTHON_VERSION) 低于 3.9，正在安装 Python 3.10..."
             $SUDO apt-get update -y
-            $SUDO apt-get install -y python3.10 python3.10-pip python3.10-venv
+            $SUDO apt-get install -y python3.10 python3-pip python3.10-venv
             if [ $? -ne 0 ]; then
                 echo "错误：Python 3.10 安装失败，请手动安装"
                 exit 1
@@ -63,39 +62,25 @@ install_prerequisites() {
         fi
     fi
 
-    # 动态获取 Python 主版本号
-    PYTHON_MAJOR_VERSION=$($PYTHON_CMD --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
-    echo "当前使用的 Python 主版本号: $PYTHON_MAJOR_VERSION"
-
     # 检查并安装 python3-venv
     if ! $PYTHON_CMD -m venv --help &> /dev/null; then
-        echo "未找到 python3-venv 模块，正在安装 python3-${PYTHON_MAJOR_VERSION}-venv..."
+        echo "未找到 python3-venv 模块，正在安装 python3.${PYTHON_VERSION}-venv..."
         $SUDO apt-get update -y
-        $SUDO apt-get install -y python3-${PYTHON_MAJOR_VERSION}-venv
+        $SUDO apt-get install -y python3.${PYTHON_VERSION}-venv
         if [ $? -ne 0 ]; then
             echo "错误：python3-venv 安装失败，请手动运行以下命令安装："
-            echo "  $SUDO apt-get install python3-${PYTHON_MAJOR_VERSION}-venv"
+            echo "  $SUDO apt-get install python3.${PYTHON_VERSION}-venv"
             exit 1
         fi
-        echo "python3-venv 安装成功，重新验证环境..."
-        # 安装后重新检查
-        if ! $PYTHON_CMD -m venv --help &> /dev/null; then
-            echo "错误：即使安装了 python3-${PYTHON_MAJOR_VERSION}-venv，venv 模块仍然不可用"
-            echo "请检查 $PYTHON_CMD 是否正确指向 Python $PYTHON_MAJOR_VERSION"
-            exit 1
-        fi
+        echo "python3-venv 安装成功"
     else
         echo "python3-venv 已安装"
     fi
-
-    # 调试信息：显示 Python 路径和版本
-    PYTHON_PATH=$(which $PYTHON_CMD)
-    echo "当前 Python 可执行文件路径: $PYTHON_PATH"
-    echo "当前 Python 完整版本: $($PYTHON_CMD --version)"
 }
 
 # 函数：克隆或更新项目
 clone_or_update_project() {
+    # 切换到脚本根目录
     pushd "$SCRIPT_ROOT" > /dev/null || {
         echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
         exit 1
@@ -120,32 +105,32 @@ clone_or_update_project() {
 
 # 函数：设置虚拟环境和依赖
 setup_environment() {
+    # 切换到脚本根目录
     pushd "$SCRIPT_ROOT" > /dev/null || {
         echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
         exit 1
     }
 
+    # 切换到项目目录
     pushd "$PROJECT_DIR" > /dev/null || {
         echo "错误：无法进入目录 $PROJECT_DIR"
         popd > /dev/null
         exit 1
     }
 
+    # 创建虚拟环境
     if [ ! -d "$VENV_NAME" ]; then
         echo "创建虚拟环境..."
         $PYTHON_CMD -m venv "$VENV_NAME"
         if [ $? -ne 0 ]; then
-            echo "错误：虚拟环境创建失败，请检查以下内容："
-            echo "1. 是否正确安装 python3-${PYTHON_MAJOR_VERSION}-venv"
-            echo "2. 当前 Python 命令 ($PYTHON_CMD) 是否支持 venv 模块"
-            echo "尝试手动安装：$SUDO apt-get install python3-${PYTHON_MAJOR_VERSION}-venv"
+            echo "错误：虚拟环境创建失败，请检查 python3-venv 是否正确安装"
+            echo "尝试手动安装：$SUDO apt-get install python3.${PYTHON_VERSION}-venv"
+            popd > /dev/null
             exit 1
         fi
-        echo "虚拟环境创建成功"
-    else
-        echo "虚拟环境已存在"
     fi
 
+    # 激活虚拟环境
     if [ -f "$VENV_NAME/bin/activate" ]; then
         source "$VENV_NAME/bin/activate"
         echo "虚拟环境已激活"
@@ -155,9 +140,11 @@ setup_environment() {
         exit 1
     fi
 
+    # 升级 pip
     echo "升级 pip..."
     pip install --upgrade pip
 
+    # 安装项目依赖
     echo "安装项目依赖..."
     pip install -r requirements.txt
     if [ $? -ne 0 ]; then
@@ -172,11 +159,15 @@ setup_environment() {
 
 # 函数：收集用户输入并生成 accounts.csv
 configure_files() {
+    # 切换到脚本根目录
     pushd "$SCRIPT_ROOT" > /dev/null || {
         echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
         exit 1
     }
 
+    echo "PROJECT_DIR 的值是: $PROJECT_DIR"
+
+    # 切换到项目目录
     pushd "$PROJECT_DIR" > /dev/null || {
         echo "错误：无法进入目录 $PROJECT_DIR"
         popd > /dev/null
@@ -235,24 +226,28 @@ configure_files() {
         account_index=$((account_index + 1))
     done
 
+    # 检查是否至少输入了一个账户
     if [ ${#tokens[@]} -eq 0 ]; then
         echo "错误：至少需要输入一个账户（Browser_ID、Token 和 UID）才能继续"
         popd > /dev/null
         exit 1
     fi
 
+    # 生成 accounts.csv
     echo "正在生成 accounts.csv 文件..."
     echo "Name,Browser_ID,Token,Proxy,UID" > accounts.csv
     for i in "${!tokens[@]}"; do
-        name="${names[$i]//,/}"
+        name="${names[$i]//,/}"      # 移除输入中的逗号以避免破坏 CSV
         browser_id="${browser_ids[$i]//,/}"
         token="${tokens[$i]//,/}"
-        proxy="${proxies[$i]:-""}"
+        proxy="${proxies[$i]:-""}"   # 如果 proxy 为空，使用空字符串
         uid="${uids[$i]//,/}"
+        # 调试输出每行内容
         echo "生成第 $((i+1)) 行: $name,$browser_id,$token,$proxy,$uid"
         echo "$name,$browser_id,$token,$proxy,$uid" >> accounts.csv
     done
 
+    # 验证生成的文件
     echo "生成的文件内容如下："
     cat accounts.csv
     echo "accounts.csv 已生成"
@@ -263,17 +258,20 @@ configure_files() {
 
 # 函数：运行项目
 run_project() {
+    # 切换到脚本根目录
     pushd "$SCRIPT_ROOT" > /dev/null || {
         echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
         exit 1
     }
 
+    # 切换到项目目录
     pushd "$PROJECT_DIR" > /dev/null || {
         echo "错误：无法进入目录 $PROJECT_DIR"
         popd > /dev/null
         exit 1
     }
 
+    # 检查虚拟环境是否存在并激活
     if [ -f "$VENV_NAME/bin/activate" ]; then
         source "$VENV_NAME/bin/activate"
         echo "虚拟环境已激活"
@@ -284,9 +282,11 @@ run_project() {
         exit 1
     fi
 
+    # 运行 bot.py
     echo "启动 AiGaea-BOT..."
     $PYTHON_CMD bot.py
 
+    # 退出虚拟环境
     deactivate
 
     popd > /dev/null
@@ -297,9 +297,16 @@ run_project() {
 install_gaeabot() {
     echo "开始安装 AiGaea-BOT..."
 
+    # 安装前置组件
     install_prerequisites
+
+    # 克隆或更新项目
     clone_or_update_project
+
+    # 设置虚拟环境和依赖
     setup_environment
+
+    # 配置 accounts.csv
     configure_files
 
     echo "AiGaea-BOT 安装完成"
