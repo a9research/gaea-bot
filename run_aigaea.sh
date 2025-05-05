@@ -1,27 +1,13 @@
 #!/bin/bash
 
-# v1.1.14
+# v1.1.13
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
-CURRENT_DIR=$(pwd)  # 当前工作目录
+PROJECT_DIR="gaea-bot"
 VENV_NAME="aigaea_venv"
 PYTHON_CMD="python3"
 MIN_VERSION="3.9"
-
-# 函数：检查当前目录是否是项目目录
-is_project_dir() {
-    local dir=$1
-    [ -f "$dir/requirements.txt" ] && [ -f "$dir/bot.py" ]
-}
-
-# 函数：检查目录是否只包含脚本文件
-is_dir_contains_only_script() {
-    local dir=$1
-    local script_name=$(basename "$0")
-    # 检查目录中是否只有脚本文件
-    [ "$(ls -A "$dir" 2>/dev/null | grep -v "^$script_name$" | wc -l)" -eq 0 ]
-}
 
 # 函数：检查并安装前置组件
 install_prerequisites() {
@@ -94,43 +80,43 @@ install_prerequisites() {
 
 # 函数：克隆或更新项目
 clone_or_update_project() {
-    # 如果当前目录已经是项目目录，直接返回
-    if is_project_dir "$CURRENT_DIR"; then
-        echo "当前目录已经是项目目录，跳过克隆"
-        return 0
-    fi
+    # 切换到脚本根目录
+    pushd "$SCRIPT_ROOT" > /dev/null || {
+        echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
+        exit 1
+    }
 
-    # 如果脚本所在目录是项目目录，使用脚本所在目录
-    if is_project_dir "$SCRIPT_ROOT"; then
-        echo "使用脚本所在目录作为项目目录"
-        cd "$SCRIPT_ROOT" || {
-            echo "错误：无法进入脚本所在目录 $SCRIPT_ROOT"
+    if [ -d "$PROJECT_DIR" ]; then
+        echo "更新现有项目..."
+        pushd "$PROJECT_DIR" > /dev/null || {
+            echo "错误：无法进入目录 $PROJECT_DIR"
+            popd > /dev/null
             exit 1
         }
-        return 0
+        git pull origin main
+        popd > /dev/null
+    else
+        echo "克隆项目..."
+        git clone https://github.com/a9research/gaea-bot.git
     fi
 
-    # 如果当前目录只包含脚本文件，克隆到当前目录
-    if is_dir_contains_only_script "$CURRENT_DIR"; then
-        echo "当前目录只包含脚本文件，克隆项目到当前目录..."
-        git clone https://github.com/a9research/gaea-bot.git .
-        return $?
-    fi
-
-    # 如果当前目录不为空且不是项目目录，提示用户
-    echo "错误：当前目录不为空且不是项目目录，请在一个只包含脚本文件的目录中运行，或者使用已经包含项目的目录"
-    echo "当前目录: $CURRENT_DIR"
-    echo "脚本所在目录: $SCRIPT_ROOT"
-    exit 1
+    popd > /dev/null
 }
 
 # 函数：设置虚拟环境和依赖
 setup_environment() {
-    # 检查当前目录是否是项目目录
-    if ! is_project_dir "$(pwd)"; then
-        echo "错误：当前目录不是有效的项目目录"
+    # 切换到脚本根目录
+    pushd "$SCRIPT_ROOT" > /dev/null || {
+        echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
         exit 1
-    fi
+    }
+
+    # 切换到项目目录
+    pushd "$PROJECT_DIR" > /dev/null || {
+        echo "错误：无法进入目录 $PROJECT_DIR"
+        popd > /dev/null
+        exit 1
+    }
 
     # 创建虚拟环境
     if [ ! -d "$VENV_NAME" ]; then
@@ -139,6 +125,7 @@ setup_environment() {
         if [ $? -ne 0 ]; then
             echo "错误：虚拟环境创建失败，请检查 python3-venv 是否正确安装"
             echo "尝试手动安装：$SUDO apt-get install python3.${PYTHON_VERSION}-venv"
+            popd > /dev/null
             exit 1
         fi
     fi
@@ -149,6 +136,7 @@ setup_environment() {
         echo "虚拟环境已激活"
     else
         echo "错误：虚拟环境激活文件不存在，请检查虚拟环境是否创建成功"
+        popd > /dev/null
         exit 1
     fi
 
@@ -161,8 +149,12 @@ setup_environment() {
     pip install -r requirements.txt
     if [ $? -ne 0 ]; then
         echo "错误：依赖安装失败，请检查网络或 requirements.txt 文件"
+        popd > /dev/null
         exit 1
     fi
+
+    popd > /dev/null
+    popd > /dev/null
 }
 
 # 函数：收集用户输入并生成 accounts.csv
@@ -173,11 +165,11 @@ configure_files() {
         exit 1
     }
 
-    echo "PROJECT_DIR 的值是: $CURRENT_DIR"
+    echo "PROJECT_DIR 的值是: $PROJECT_DIR"
 
     # 切换到项目目录
-    pushd "$CURRENT_DIR" > /dev/null || {
-        echo "错误：无法进入目录 $CURRENT_DIR"
+    pushd "$PROJECT_DIR" > /dev/null || {
+        echo "错误：无法进入目录 $PROJECT_DIR"
         popd > /dev/null
         exit 1
     }
@@ -273,8 +265,8 @@ run_project() {
     }
 
     # 切换到项目目录
-    pushd "$CURRENT_DIR" > /dev/null || {
-        echo "错误：无法进入目录 $CURRENT_DIR"
+    pushd "$PROJECT_DIR" > /dev/null || {
+        echo "错误：无法进入目录 $PROJECT_DIR"
         popd > /dev/null
         exit 1
     }

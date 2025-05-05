@@ -62,9 +62,9 @@ htmlcov/
 Thumbs.db
 
 # 敏感数据文件
-accounts.csv
-accounts.json
-proxy.txt
+# accounts.csv
+# accounts.json
+# proxy.txt
 *.env
 
 # 项目特定文件
@@ -75,4 +75,5 @@ proxy.txt
 # 其他
 *.out
 *.prof
-*.txt
+bot.txt
+run_aigaea.txt
