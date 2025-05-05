@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# v1.1.13
+# v1.1.14
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
@@ -130,7 +130,7 @@ setup_environment() {
     if ! is_project_dir "$(pwd)"; then
         echo "错误：当前目录不是有效的项目目录"
         exit 1
-    }
+    fi
 
     # 创建虚拟环境
     if [ ! -d "$VENV_NAME" ]; then
