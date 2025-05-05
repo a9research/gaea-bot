@@ -4,7 +4,7 @@
 
 # 定义项目目录和虚拟环境名称
 SCRIPT_ROOT=$(dirname "$(realpath "$0")")  # 保存脚本的根目录（绝对路径）
-PROJECT_DIR="gaea-bot"
+PROJECT_DIR="."  # 使用当前目录作为项目目录
 VENV_NAME="aigaea_venv"
 PYTHON_CMD="python3"
 MIN_VERSION="3.9"
@@ -80,24 +80,18 @@ install_prerequisites() {
 
 # 函数：克隆或更新项目
 clone_or_update_project() {
-    # 切换到脚本根目录
-    pushd "$SCRIPT_ROOT" > /dev/null || {
-        echo "错误：无法进入脚本根目录 $SCRIPT_ROOT"
+    # 切换到当前目录
+    pushd "$(pwd)" > /dev/null || {
+        echo "错误：无法进入当前目录"
         exit 1
     }
 
-    if [ -d "$PROJECT_DIR" ]; then
+    if [ -d ".git" ]; then
         echo "更新现有项目..."
-        pushd "$PROJECT_DIR" > /dev/null || {
-            echo "错误：无法进入目录 $PROJECT_DIR"
-            popd > /dev/null
-            exit 1
-        }
         git pull origin main
-        popd > /dev/null
     else
         echo "克隆项目..."
-        git clone https://github.com/a9research/gaea-bot.git
+        git clone https://github.com/a9research/gaea-bot.git .
     fi
 
     popd > /dev/null

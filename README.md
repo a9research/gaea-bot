@@ -14,6 +14,13 @@ Git：用于克隆项目。
 
 ### 详细使用步骤
 #### 步骤 1：
+新建一个工作目录
+```
+mkdir gaea
+cd gaea
+```
+
+#### 步骤 2：
 从github上拉取安装脚本并执行
 ```
 wget -O run_aigaea.sh https://raw.githubusercontent.com/a9research/gaea-bot/refs/heads/main/run_aigaea.sh && sed -i 's/\r$//' run_aigaea.sh && chmod +x run_aigaea.sh && ./run_aigaea.sh
