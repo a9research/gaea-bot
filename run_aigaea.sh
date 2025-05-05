@@ -98,7 +98,7 @@ clone_or_update_project() {
     if is_project_dir "$CURRENT_DIR"; then
         echo "当前目录已经是项目目录，跳过克隆"
         return 0
-    }
+    fi
 
     # 如果脚本所在目录是项目目录，使用脚本所在目录
     if is_project_dir "$SCRIPT_ROOT"; then
@@ -108,7 +108,7 @@ clone_or_update_project() {
             exit 1
         }
         return 0
-    }
+    fi
 
     # 如果当前目录只包含脚本文件，克隆到当前目录
     if is_dir_contains_only_script "$CURRENT_DIR"; then
