@@ -139,7 +139,20 @@ class AiGaea:
                         "Run Without Proxy"
                     )
                     print(f"{Fore.GREEN + Style.BRIGHT}{proxy_type} Selected.{Style.RESET_ALL}")
-                    return choose
+                    
+                    # 添加训练选项
+                    while True:
+                        try:
+                            trained = input("Auto Complete Training? Will Burned 0-2500 PTS (y/n) ->").strip().lower()
+                            if trained in ["y", "n"]:
+                                trained = trained == "y"
+                                break
+                            else:
+                                print(f"{Fore.RED + Style.BRIGHT}Enter 'y' to Yes or 'n' to Skip.{Style.RESET_ALL}")
+                        except ValueError:
+                            print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' to Yes or 'n' to Skip.{Style.RESET_ALL}")
+                    
+                    return choose, trained
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Please enter either 1 or 2.{Style.RESET_ALL}")
             except ValueError:
@@ -302,6 +315,130 @@ class AiGaea:
             )
             await asyncio.sleep(wait_time)
 
+    async def complete_training(self, token: str, username: str, proxy=None, retries=2):
+        url = "https://api.aigaea.net/api/ai/complete"
+        data = json.dumps({"detail":"3_0_1"})
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Content-Length": str(len(data))
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        if result.get("success") is not True:
+                            raise ValueError(f"API returned unsuccessful response: {result.get('msg')}")
+                        return result  # 返回完整的响应数据，而不是只返回data字段
+            except ClientResponseError as e:
+                if e.status == 401:
+                    return "TOKEN_EXPIRED"
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Complete Training Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+            except Exception as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Complete Training Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+
+    async def get_soul_balance(self, token: str, username: str, proxy=None, retries=2):
+        url = "https://api.aigaea.net/api/ai/list"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Priority": "u=1, i"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        if result.get("success") is not True:
+                            raise ValueError(f"API returned unsuccessful response: {result.get('msg')}")
+                        return result
+            except ClientResponseError as e:
+                if e.status == 401:
+                    return "TOKEN_EXPIRED"
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Get Soul Balance Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+            except Exception as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Get Soul Balance Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+
+    async def process_complete_training(self, token: str, username: str, account_data: dict, proxy=None):
+        while True:
+            try:
+                # 首先检查积分余额
+                self.print_message(username, proxy, Fore.BLUE, "Checking Points Balance...")
+                earning = await self.user_earning(token, username, proxy)
+                if earning == "TOKEN_EXPIRED":
+                    self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
+                    self.save_paused_account(account_data)
+                    return
+                
+                if earning:
+                    total_points = earning['total_total']
+                    
+                    self.print_message(username, proxy, Fore.WHITE,
+                        f"Current Points Balance: {total_points} PTS"
+                    )
+                    
+                    if total_points < 2500:
+                        self.print_message(username, proxy, Fore.YELLOW, 
+                            f"Points Balance ({total_points}) is less than 2500, skipping training today")
+                        await asyncio.sleep(24 * 60 * 60)  # 24小时后重试
+                        continue
+                    
+                    # 执行训练
+                    self.print_message(username, proxy, Fore.BLUE, "Starting Training...")
+                    train = await self.complete_training(token, username, proxy)
+                    if train == "TOKEN_EXPIRED":
+                        self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
+                        self.save_paused_account(account_data)
+                        return
+                    
+                    if train and train.get("code") == 200 and train.get("success") is True:
+                        data = train.get("data", {})
+                        burned_points = data.get('burned_points', 0)
+                        soul = data.get('soul', 0)
+                        blindbox = data.get('blindbox', 0)
+                        self.print_message(username, proxy, Fore.GREEN,
+                            "Training Completed "
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
+                        )
+                    elif train and train.get("code") == 400:
+                        self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed")
+            except Exception as e:
+                logging.error("Complete Training Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
+                self.print_message(username, proxy, Fore.RED, f"Complete Training Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+
+            await asyncio.sleep(24 * 60 * 60)  # 24小时执行一次
+
     async def process_accounts(self, account: dict, use_proxy: bool):
         browser_id = account.get('Browser_ID')
         token = account.get('Token')
@@ -322,7 +459,9 @@ class AiGaea:
             tasks = []
             tasks.append(self.process_user_earning(token, username, account, proxy))
             tasks.append(self.process_send_ping(token, browser_id, username, user_id, account, proxy, ping_type="extension"))
-            # tasks.append(self.process_send_ping(token, browser_id, username, user_id, account, proxy, ping_type="webpage"))
+            # 添加训练任务
+            if account.get('trained', False):  # 如果账户启用了训练
+                tasks.append(self.process_complete_training(token, username, account, proxy))
             await asyncio.gather(*tasks)
         except Exception as e:
             logging.error("Process Account Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
@@ -335,8 +474,12 @@ class AiGaea:
                 self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
                 return
             
-            use_proxy_choice = self.print_question()
+            use_proxy_choice, trained = self.print_question()
             use_proxy = use_proxy_choice == 1
+
+            # 更新账户的训练状态
+            for account in self.accounts:
+                account['trained'] = trained
 
             self.clear_terminal()
             self.welcome()
