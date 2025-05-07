@@ -5,7 +5,7 @@ from aiohttp import (
 )
 from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
-from datetime import datetime
+from datetime import datetime, timedelta
 from colorama import *
 import asyncio, time, os, pytz, csv, random, json, logging
 
@@ -387,7 +387,7 @@ class AiGaea:
     async def process_complete_training(self, token: str, username: str, account_data: dict, proxy=None):
         while True:
             try:
-                # 首先检查积分余额
+                # 检查积分余额
                 self.print_message(username, proxy, Fore.BLUE, "Checking Points Balance...")
                 earning = await self.user_earning(token, username, proxy)
                 if earning == "TOKEN_EXPIRED":
@@ -405,39 +405,57 @@ class AiGaea:
                     if total_points < 2500:
                         self.print_message(username, proxy, Fore.YELLOW, 
                             f"Points Balance ({total_points}) is less than 2500, skipping training today")
-                        await asyncio.sleep(24 * 60 * 60)  # 24小时后重试
-                        continue
-                    
-                    # 执行训练
-                    self.print_message(username, proxy, Fore.BLUE, "Starting Training...")
-                    train = await self.complete_training(token, username, proxy)
-                    if train == "TOKEN_EXPIRED":
-                        self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
-                        self.save_paused_account(account_data)
-                        return
-                    
-                    if train and train.get("code") == 200 and train.get("success") is True:
-                        data = train.get("data", {})
-                        burned_points = data.get('burned_points', 0)
-                        soul = data.get('soul', 0)
-                        blindbox = data.get('blindbox', 0)
-                        self.print_message(username, proxy, Fore.GREEN,
-                            "Training Completed "
-                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
-                        )
-                    elif train and train.get("code") == 400:
-                        self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed")
-            except Exception as e:
-                logging.error("Complete Training Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
-                self.print_message(username, proxy, Fore.RED, f"Complete Training Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                    else:
+                        # 执行训练
+                        self.print_message(username, proxy, Fore.BLUE, "Starting Training...")
+                        train = await self.complete_training(token, username, proxy)
+                        if train == "TOKEN_EXPIRED":
+                            self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
+                            self.save_paused_account(account_data)
+                            return
+                        
+                        if train and train.get("code") == 200 and train.get("success") is True:
+                            data = train.get("data", {})
+                            burned_points = data.get('burned_points', 0)
+                            soul = data.get('soul', 0)
+                            blindbox = data.get('blindbox', 0)
+                            self.print_message(username, proxy, Fore.GREEN,
+                                "Training Completed "
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
+                            )
+                        elif train and train.get("code") == 400:
+                            self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed")
+                        else:
+                            # 处理其他API响应错误
+                            error_msg = train.get('msg', 'Unknown error') if train else 'No response'
+                            self.print_message(username, proxy, Fore.RED, f"Training API Error: {error_msg}")
+                            await asyncio.sleep(60)  # API错误时等待1分钟后重试
+                            continue
 
-            await asyncio.sleep(24 * 60 * 60)  # 24小时执行一次
+                # 获取当前UTC时间
+                current_utc = datetime.now(pytz.UTC)
+                # 计算距离下一个UTC 0:00的时间
+                next_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                # 生成随机等待时间（0-86400秒之间，即0-24小时）
+                random_seconds = random.randint(0, 86400)
+                # 确保总等待时间不超过下一个UTC 0:00
+                wait_seconds = min((next_utc - current_utc).total_seconds(), random_seconds)
+                
+                self.print_message(username, proxy, Fore.BLUE, 
+                    f"Next training will be in {self.format_seconds(wait_seconds)}")
+                await asyncio.sleep(wait_seconds)
+
+            except Exception as e:
+                # 处理未预期的异常（如网络错误、连接超时等）
+                logging.error("Complete Training Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
+                self.print_message(username, proxy, Fore.RED, f"Unexpected Error: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                await asyncio.sleep(60)  # 发生未预期错误时等待1分钟后重试
 
     async def process_accounts(self, account: dict, use_proxy: bool):
         browser_id = account.get('Browser_ID')
