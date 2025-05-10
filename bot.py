@@ -259,9 +259,11 @@ class AiGaea:
                             self.log(f"{Fore.YELLOW}UTF-8 decode failed, trying Latin-1 for {username} ({ping_type}){Style.RESET_ALL}")
                             text = await response.text(encoding='latin-1')
                             result = json.loads(text)
+                        if result.get("code") == 401:  # 检查响应中的code是否为401
+                            return "TOKEN_EXPIRED"
                         return result['data']
             except ClientResponseError as e:
-                if e.status == 401:
+                if e.status == 401:  # 检查HTTP状态码是否为401
                     return "TOKEN_EXPIRED"
                 if attempt < retries - 1:
                     self.log(f"{Fore.YELLOW}Retrying {ping_type} ping for {username} (attempt {attempt + 1}/{retries})...{Style.RESET_ALL}")
