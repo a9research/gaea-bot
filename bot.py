@@ -13,9 +13,12 @@ wib = pytz.timezone('Asia/Jakarta')
 
 # 配置日志记录
 logging.basicConfig(
-    filename='account_errors.log',
-    level=logging.ERROR,
-    format='%(asctime)s - Account: %(account)s - Proxy: %(proxy)s - Error: %(message)s'
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('aigaea.log', encoding='utf-8'),
+        logging.StreamHandler()  # 同时输出到控制台
+    ]
 )
 
 class AiGaea:
@@ -114,7 +117,14 @@ class AiGaea:
 
     def print_message(self, account, proxy, color, message):
         proxy_display = proxy if proxy else "No Proxy"
-        self.log(
+        log_message = f"[ Account: {account} - Proxy: {proxy_display} - Status: {message} ]"
+        self.log(log_message)
+        # 同时记录到日志文件
+        logging.info(log_message)
+        # 打印彩色消息到控制台
+        print(
+            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
             f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
             f"{Fore.WHITE + Style.BRIGHT} {account} {Style.RESET_ALL}"
             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
@@ -265,6 +275,8 @@ class AiGaea:
             except ClientResponseError as e:
                 if e.status == 401:  # 检查HTTP状态码是否为401
                     return "TOKEN_EXPIRED"
+                if e.status == 403:  # 检查HTTP状态码是否为403
+                    return "ACCOUNT_FORBIDDEN"
                 if attempt < retries - 1:
                     self.log(f"{Fore.YELLOW}Retrying {ping_type} ping for {username} (attempt {attempt + 1}/{retries})...{Style.RESET_ALL}")
                     await asyncio.sleep(5)
@@ -293,6 +305,10 @@ class AiGaea:
                 ping = await self.send_ping(token, browser_id, username, user_id, proxy, ping_type=ping_type)
                 if ping == "TOKEN_EXPIRED":
                     self.print_message(username, proxy, Fore.RED, f"Token Expired (401) - Pausing Account ({ping_type})")
+                    self.save_paused_account(account_data)
+                    return
+                if ping == "ACCOUNT_FORBIDDEN":
+                    self.print_message(username, proxy, Fore.RED, f"Account Forbidden (403) - Pausing Account ({ping_type})")
                     self.save_paused_account(account_data)
                     return
                 if ping:
@@ -385,6 +401,141 @@ class AiGaea:
                     continue
                 self.print_message(username, proxy, Fore.RED, f"Get Soul Balance Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 return None
+
+    async def get_daily_rewards(self, token: str, username: str, proxy=None, retries=2):
+        url = "https://api.aigaea.net/api/reward/daily-list"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Priority": "u=1, i"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        if result.get("success") is not True:
+                            raise ValueError(f"API returned unsuccessful response: {result.get('msg')}")
+                        return result['data']
+            except ClientResponseError as e:
+                if e.status == 401:
+                    return "TOKEN_EXPIRED"
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Get Daily Rewards Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+            except Exception as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Get Daily Rewards Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+
+    async def claim_daily_reward(self, token: str, username: str, reward_id: int, proxy=None, retries=2):
+        url = "https://api.aigaea.net/api/reward/daily-complete"
+        data = json.dumps({"id": reward_id})
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Content-Length": str(len(data))
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        if result.get("success") is not True:
+                            raise ValueError(f"API returned unsuccessful response: {result.get('msg')}")
+                        return result['data']
+            except ClientResponseError as e:
+                if e.status == 401:
+                    return "TOKEN_EXPIRED"
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Claim Daily Reward Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+            except Exception as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+                self.print_message(username, proxy, Fore.RED, f"Claim Daily Reward Failed: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                return None
+
+    async def process_daily_reward(self, token: str, username: str, account_data: dict, proxy=None):
+        while True:
+            try:
+                # 获取每日奖励列表
+                self.print_message(username, proxy, Fore.BLUE, "Getting Daily Rewards...")
+                daily_rewards = await self.get_daily_rewards(token, username, proxy)
+                if daily_rewards == "TOKEN_EXPIRED":
+                    self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
+                    self.save_paused_account(account_data)
+                    return
+
+                if daily_rewards:
+                    # 检查今天是否已经领取过奖励
+                    if daily_rewards.get('today') == 1:
+                        self.print_message(username, proxy, Fore.YELLOW, "Daily reward already claimed today")
+                    else:
+                        # 找到未领取的奖励
+                        available_rewards = [reward for reward in daily_rewards['list'] if not reward['reward']]
+                        if available_rewards:
+                            # 随机选择一个未领取的奖励
+                            selected_reward = random.choice(available_rewards)
+                            reward_id = selected_reward['daily']
+                            
+                            self.print_message(username, proxy, Fore.BLUE, f"Claiming Daily Reward (ID: {reward_id})...")
+                            reward_data = await self.claim_daily_reward(token, username, reward_id, proxy)
+                            if reward_data == "TOKEN_EXPIRED":
+                                self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Pausing Account")
+                                self.save_paused_account(account_data)
+                                return
+
+                            if reward_data:
+                                soul = reward_data.get('soul', 0)
+                                core = reward_data.get('core', 0)
+                                blindbox = reward_data.get('blindbox', 0)
+                                self.print_message(username, proxy, Fore.GREEN,
+                                    "Daily Reward Claimed "
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{core} Core{Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
+                                )
+                        else:
+                            self.print_message(username, proxy, Fore.YELLOW, "No Available Daily Rewards")
+
+                # 获取当前UTC时间
+                current_utc = datetime.now(pytz.UTC)
+                # 计算距离下一个UTC 0:00的时间
+                next_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                # 生成随机等待时间（0-86400秒之间，即0-24小时）
+                random_seconds = random.randint(0, 86400)
+                # 确保总等待时间不超过下一个UTC 0:00
+                wait_seconds = min((next_utc - current_utc).total_seconds(), random_seconds)
+                
+                self.print_message(username, proxy, Fore.BLUE, 
+                    f"Next daily reward check will be in {self.format_seconds(wait_seconds)}")
+                await asyncio.sleep(wait_seconds)
+
+            except Exception as e:
+                # 处理未预期的异常（如网络错误、连接超时等）
+                logging.error("Daily Reward Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
+                self.print_message(username, proxy, Fore.RED, f"Unexpected Error: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
+                await asyncio.sleep(60)  # 发生未预期错误时等待1分钟后重试
 
     async def process_complete_training(self, token: str, username: str, account_data: dict, proxy=None):
         while True:
@@ -482,6 +633,8 @@ class AiGaea:
             # 添加训练任务
             if account.get('trained', False):  # 如果账户启用了训练
                 tasks.append(self.process_complete_training(token, username, account, proxy))
+            # 添加每日奖励任务
+            tasks.append(self.process_daily_reward(token, username, account, proxy))
             await asyncio.gather(*tasks)
         except Exception as e:
             logging.error("Process Account Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
