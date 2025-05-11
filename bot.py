@@ -231,7 +231,7 @@ class AiGaea:
 
     async def send_ping(self, token: str, browser_id: str, username: str, user_id: str, proxy=None, retries=2, ping_type="extension"):
         url = "https://api.aigaea.net/api/network/ping"
-        version = "3.0.1" if ping_type == "extension" else "1.0.1"
+        version = "3.0.19"
         data = json.dumps({
             "browser_id": browser_id,
             "timestamp": int(time.time()),  
@@ -351,8 +351,11 @@ class AiGaea:
                         response.raise_for_status()
                         result = await response.json()
                         if result.get("success") is not True:
+                            # 如果是训练已完成的情况，直接返回结果
+                            if result.get("msg") == "Training already completed":
+                                return result
                             raise ValueError(f"API returned unsuccessful response: {result.get('msg')}")
-                        return result  # 返回完整的响应数据，而不是只返回data字段
+                        return result
             except ClientResponseError as e:
                 if e.status == 401:
                     return "TOKEN_EXPIRED"
@@ -567,28 +570,34 @@ class AiGaea:
                             self.save_paused_account(account_data)
                             return
                         
-                        if train and train.get("code") == 200 and train.get("success") is True:
-                            data = train.get("data", {})
-                            burned_points = data.get('burned_points', 0)
-                            soul = data.get('soul', 0)
-                            blindbox = data.get('blindbox', 0)
-                            self.print_message(username, proxy, Fore.GREEN,
-                                "Training Completed "
-                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
-                            )
-                        elif train and train.get("code") == 400:
-                            self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed")
+                        if train:
+                            if train.get("code") == 200 and train.get("success") is True:
+                                data = train.get("data", {})
+                                burned_points = data.get('burned_points', 0)
+                                soul = data.get('soul', 0)
+                                blindbox = data.get('blindbox', 0)
+                                self.print_message(username, proxy, Fore.GREEN,
+                                    "Training Completed "
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
+                                )
+                            elif train.get("msg") == "Training already completed":
+                                self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed Today")
+                            else:
+                                # 处理其他API响应错误
+                                error_msg = train.get('msg', 'Unknown error')
+                                self.print_message(username, proxy, Fore.RED, f"Training API Error: {error_msg}")
+                                await asyncio.sleep(60)  # API错误时等待1分钟后重试
+                                continue
                         else:
-                            # 处理其他API响应错误
-                            error_msg = train.get('msg', 'Unknown error') if train else 'No response'
-                            self.print_message(username, proxy, Fore.RED, f"Training API Error: {error_msg}")
-                            await asyncio.sleep(60)  # API错误时等待1分钟后重试
+                            # 如果没有响应，等待后重试
+                            self.print_message(username, proxy, Fore.YELLOW, "No response from training API, retrying in 60 seconds...")
+                            await asyncio.sleep(60)
                             continue
 
                 # 获取当前UTC时间
@@ -609,6 +618,97 @@ class AiGaea:
                 logging.error("Complete Training Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
                 self.print_message(username, proxy, Fore.RED, f"Unexpected Error: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
                 await asyncio.sleep(60)  # 发生未预期错误时等待1分钟后重试
+
+    async def test_training(self, token: str, username: str, proxy=None):
+        """测试训练功能的方法"""
+        self.print_message(username, proxy, Fore.BLUE, "Starting Training Test...")
+        
+        # 1. 首先检查积分余额
+        self.print_message(username, proxy, Fore.BLUE, "Checking Points Balance...")
+        earning = await self.user_earning(token, username, proxy)
+        if earning == "TOKEN_EXPIRED":
+            self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Test Failed")
+            return False
+        
+        if earning:
+            total_points = earning['total_total']
+            self.print_message(username, proxy, Fore.WHITE,
+                f"Current Points Balance: {total_points} PTS"
+            )
+            
+            if total_points < 2500:
+                self.print_message(username, proxy, Fore.YELLOW, 
+                    f"Points Balance ({total_points}) is less than 2500, cannot test training")
+                return False
+        
+        # 2. 检查 Soul 余额
+        self.print_message(username, proxy, Fore.BLUE, "Checking Soul Balance...")
+        soul_balance = await self.get_soul_balance(token, username, proxy)
+        if soul_balance == "TOKEN_EXPIRED":
+            self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Test Failed")
+            return False
+            
+        if soul_balance:
+            self.print_message(username, proxy, Fore.WHITE,
+                f"Current Soul Balance: {soul_balance.get('data', {}).get('soul', 0)} PTS"
+            )
+        
+        # 3. 执行训练
+        self.print_message(username, proxy, Fore.BLUE, "Testing Training...")
+        train = await self.complete_training(token, username, proxy)
+        if train == "TOKEN_EXPIRED":
+            self.print_message(username, proxy, Fore.RED, "Token Expired (401) - Test Failed")
+            return False
+        
+        if train:
+            if train.get("code") == 200 and train.get("success") is True:
+                data = train.get("data", {})
+                burned_points = data.get('burned_points', 0)
+                soul = data.get('soul', 0)
+                blindbox = data.get('blindbox', 0)
+                self.print_message(username, proxy, Fore.GREEN,
+                    "Training Test Success "
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} Burned {burned_points} PTS {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{soul} Soul PTS{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
+                )
+                return True
+            elif train.get("code") == 400:
+                self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed - Test Skipped")
+                return True
+            else:
+                error_msg = train.get('msg', 'Unknown error')
+                self.print_message(username, proxy, Fore.RED, f"Training Test Failed: {error_msg}")
+                return False
+        else:
+            self.print_message(username, proxy, Fore.RED, "Training Test Failed: No Response")
+            return False
+
+    async def test_account(self, account: dict, use_proxy: bool):
+        """测试单个账户的所有功能"""
+        browser_id = account.get('Browser_ID')
+        token = account.get('Token')
+        proxy = self.check_proxy_schemes(account.get('Proxy')) if use_proxy else None
+        username = account.get('Name')
+        user_id = account.get('UID')
+        
+        if not (token and browser_id and username and user_id):
+            self.log(f"{Fore.RED}Missing required fields (Token, Browser_ID, Name, or UID) for account {username or 'unknown'}{Style.RESET_ALL}")
+            return
+
+        self.print_message(username, proxy, Fore.BLUE, "Starting Account Test...")
+        
+        # 测试训练功能
+        training_result = await self.test_training(token, username, proxy)
+        
+        if training_result:
+            self.print_message(username, proxy, Fore.GREEN, "Account Test Completed Successfully")
+        else:
+            self.print_message(username, proxy, Fore.RED, "Account Test Failed")
 
     async def process_accounts(self, account: dict, use_proxy: bool):
         browser_id = account.get('Browser_ID')
@@ -667,11 +767,27 @@ class AiGaea:
 
             self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
 
-            tasks = []
-            for account in self.accounts:
-                tasks.append(self.process_accounts(account, use_proxy))
+            # 询问是否要运行测试
+            while True:
+                try:
+                    test_mode = input("Run in test mode? (y/n) -> ").strip().lower()
+                    if test_mode in ["y", "n"]:
+                        break
+                    else:
+                        print(f"{Fore.RED + Style.BRIGHT}Please enter 'y' for test mode or 'n' for normal mode.{Style.RESET_ALL}")
+                except ValueError:
+                    print(f"{Fore.RED + Style.BRIGHT}Invalid input. Please enter 'y' or 'n'.{Style.RESET_ALL}")
 
-            await asyncio.gather(*tasks)
+            if test_mode == "y":
+                # 测试模式：只测试第一个账户
+                if self.accounts:
+                    await self.test_account(self.accounts[0], use_proxy)
+            else:
+                # 正常模式：运行所有账户
+                tasks = []
+                for account in self.accounts:
+                    tasks.append(self.process_accounts(account, use_proxy))
+                await asyncio.gather(*tasks)
 
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
