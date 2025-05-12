@@ -543,6 +543,33 @@ class AiGaea:
     async def process_complete_training(self, token: str, username: str, account_data: dict, proxy=None):
         while True:
             try:
+                # 获取当前UTC时间
+                current_utc = datetime.now(pytz.UTC)
+                # 计算今天的UTC 0:00
+                today_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+                # 计算下一个UTC 0:00
+                next_utc = today_utc + timedelta(days=1)
+                
+                # 生成今天的随机训练时间（UTC 0-24点之间）
+                random_hour = random.randint(0, 23)
+                random_minute = random.randint(0, 59)
+                random_second = random.randint(0, 59)
+                today_training_time = today_utc.replace(hour=random_hour, minute=random_minute, second=random_second)
+                
+                # 如果当前时间已经过了今天的训练时间，等待到下一个UTC 0:00
+                if current_utc >= today_training_time:
+                    wait_seconds = (next_utc - current_utc).total_seconds()
+                    self.print_message(username, proxy, Fore.BLUE, 
+                        f"Training time ({today_training_time.strftime('%H:%M:%S')} UTC) has passed, waiting for next day")
+                    await asyncio.sleep(wait_seconds)
+                    continue
+
+                # 计算到随机训练时间的等待时间
+                wait_seconds = (today_training_time - current_utc).total_seconds()
+                self.print_message(username, proxy, Fore.BLUE, 
+                    f"Waiting for training time: {today_training_time.strftime('%H:%M:%S')} UTC")
+                await asyncio.sleep(wait_seconds)
+                
                 # 检查积分余额
                 self.print_message(username, proxy, Fore.BLUE, "Checking Points Balance...")
                 earning = await self.user_earning(token, username, proxy)
@@ -586,38 +613,53 @@ class AiGaea:
                                     f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                                     f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
                                 )
+                                # 训练成功后等待到下一个UTC 0:00
+                                wait_seconds = (next_utc - current_utc).total_seconds()
+                                self.print_message(username, proxy, Fore.BLUE, 
+                                    f"Training completed successfully, waiting for next day")
+                                await asyncio.sleep(wait_seconds)
+                                continue
                             elif train.get("msg") == "Training already completed":
                                 self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed Today")
+                                # 训练已完成时等待到下一个UTC 0:00
+                                wait_seconds = (next_utc - current_utc).total_seconds()
+                                self.print_message(username, proxy, Fore.BLUE, 
+                                    f"Waiting for next day's training")
+                                await asyncio.sleep(wait_seconds)
+                                continue
                             else:
                                 # 处理其他API响应错误
                                 error_msg = train.get('msg', 'Unknown error')
                                 self.print_message(username, proxy, Fore.RED, f"Training API Error: {error_msg}")
-                                await asyncio.sleep(60)  # API错误时等待1分钟后重试
+                                # 生成新的随机训练时间（从当前时间到UTC 24:00）
+                                remaining_seconds = (next_utc - current_utc).total_seconds()
+                                new_wait_seconds = random.randint(0, int(remaining_seconds))
+                                new_training_time = current_utc + timedelta(seconds=new_wait_seconds)
+                                self.print_message(username, proxy, Fore.BLUE, 
+                                    f"Training failed, will retry at {new_training_time.strftime('%H:%M:%S')} UTC")
+                                await asyncio.sleep(new_wait_seconds)
                                 continue
                         else:
-                            # 如果没有响应，等待后重试
-                            self.print_message(username, proxy, Fore.YELLOW, "No response from training API, retrying in 60 seconds...")
-                            await asyncio.sleep(60)
+                            # 如果没有响应，生成新的随机训练时间
+                            remaining_seconds = (next_utc - current_utc).total_seconds()
+                            new_wait_seconds = random.randint(0, int(remaining_seconds))
+                            new_training_time = current_utc + timedelta(seconds=new_wait_seconds)
+                            self.print_message(username, proxy, Fore.YELLOW, 
+                                f"No response from training API, will retry at {new_training_time.strftime('%H:%M:%S')} UTC")
+                            await asyncio.sleep(new_wait_seconds)
                             continue
-
-                # 获取当前UTC时间
-                current_utc = datetime.now(pytz.UTC)
-                # 计算距离下一个UTC 0:00的时间
-                next_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-                # 生成随机等待时间（0-86400秒之间，即0-24小时）
-                random_seconds = random.randint(0, 86400)
-                # 确保总等待时间不超过下一个UTC 0:00
-                wait_seconds = min((next_utc - current_utc).total_seconds(), random_seconds)
-                
-                self.print_message(username, proxy, Fore.BLUE, 
-                    f"Next training will be in {self.format_seconds(wait_seconds)}")
-                await asyncio.sleep(wait_seconds)
 
             except Exception as e:
                 # 处理未预期的异常（如网络错误、连接超时等）
                 logging.error("Complete Training Failed", extra={"account": username, "proxy": proxy if proxy else "No Proxy", "message": str(e)})
                 self.print_message(username, proxy, Fore.RED, f"Unexpected Error: {Fore.YELLOW+Style.BRIGHT}{str(e)}")
-                await asyncio.sleep(60)  # 发生未预期错误时等待1分钟后重试
+                # 发生错误时也生成新的随机训练时间
+                remaining_seconds = (next_utc - current_utc).total_seconds()
+                new_wait_seconds = random.randint(0, int(remaining_seconds))
+                new_training_time = current_utc + timedelta(seconds=new_wait_seconds)
+                self.print_message(username, proxy, Fore.BLUE, 
+                    f"Error occurred, will retry at {new_training_time.strftime('%H:%M:%S')} UTC")
+                await asyncio.sleep(new_wait_seconds)
 
     async def test_training(self, token: str, username: str, proxy=None):
         """测试训练功能的方法"""
