@@ -525,10 +525,10 @@ class AiGaea:
                 current_utc = datetime.now(pytz.UTC)
                 # 计算距离下一个UTC 0:00的时间
                 next_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-                # 生成随机等待时间（0-86400秒之间，即0-24小时）
-                random_seconds = random.randint(0, 86400)
-                # 确保总等待时间不超过下一个UTC 0:00
-                wait_seconds = min((next_utc - current_utc).total_seconds(), random_seconds)
+                # 计算到下一个UTC 0:00的剩余秒数
+                remaining_seconds = (next_utc - current_utc).total_seconds()
+                # 在剩余时间内随机选择一个时间点
+                wait_seconds = random.uniform(0, remaining_seconds)
                 
                 self.print_message(username, proxy, Fore.BLUE, 
                     f"Next daily reward check will be in {self.format_seconds(wait_seconds)}")
