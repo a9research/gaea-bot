@@ -477,7 +477,40 @@ class AiGaea:
     async def process_daily_reward(self, token: str, username: str, account_data: dict, proxy=None):
         while True:
             try:
-                # 获取每日奖励列表
+                # 获取当前UTC时间
+                current_utc = datetime.now(pytz.UTC)
+                # 计算今天的UTC 0:00
+                today_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+                # 计算下一个UTC 0:00
+                next_utc = today_utc + timedelta(days=1)
+                
+                # 生成今天的随机领取时间（UTC 0-24点之间）
+                random_hour = random.randint(0, 23)
+                random_minute = random.randint(0, 59)
+                random_second = random.randint(0, 59)
+                today_reward_time = today_utc.replace(hour=random_hour, minute=random_minute, second=random_second)
+                
+                # 如果当前时间已经过了今天的随机时间，在当前时间和24点之间生成新的随机时间
+                # 但是要排除当前时间是UTC 0:00的情况
+                if current_utc >= today_reward_time and current_utc != today_utc:
+                    # 计算当前时间到24点的秒数
+                    remaining_seconds = (next_utc - current_utc).total_seconds()
+                    # 生成一个0到剩余秒数之间的随机等待时间
+                    random_wait_seconds = random.randint(0, int(remaining_seconds))
+                    # 计算新的随机时间点
+                    new_reward_time = current_utc + timedelta(seconds=random_wait_seconds)
+                    self.print_message(username, proxy, Fore.BLUE, 
+                        f"Original reward time ({today_reward_time.strftime('%H:%M:%S')} UTC) has passed, "
+                        f"will try at {new_reward_time.strftime('%H:%M:%S')} UTC")
+                    await asyncio.sleep(random_wait_seconds)
+                else:
+                    # 计算到随机领取时间的等待时间
+                    wait_seconds = (today_reward_time - current_utc).total_seconds()
+                    self.print_message(username, proxy, Fore.BLUE, 
+                        f"Waiting for reward time: {today_reward_time.strftime('%H:%M:%S')} UTC")
+                    await asyncio.sleep(wait_seconds)
+
+                # 到达随机时间后，获取每日奖励列表
                 self.print_message(username, proxy, Fore.BLUE, "Getting Daily Rewards...")
                 daily_rewards = await self.get_daily_rewards(token, username, proxy)
                 if daily_rewards == "TOKEN_EXPIRED":
@@ -489,6 +522,12 @@ class AiGaea:
                     # 检查今天是否已经领取过奖励
                     if daily_rewards.get('today') == 1:
                         self.print_message(username, proxy, Fore.YELLOW, "Daily reward already claimed today")
+                        # 如果已经领取过奖励，等待到下一个UTC 0:00
+                        wait_seconds = (next_utc - current_utc).total_seconds()
+                        self.print_message(username, proxy, Fore.BLUE, 
+                            f"Next daily reward check will be in {self.format_seconds(wait_seconds)}")
+                        await asyncio.sleep(wait_seconds)
+                        continue
                     else:
                         # 找到未领取的奖励
                         available_rewards = [reward for reward in daily_rewards['list'] if not reward['reward']]
@@ -518,35 +557,20 @@ class AiGaea:
                                     f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                                     f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
                                 )
+                                # 领取奖励后等待到下一个UTC 0:00
+                                wait_seconds = (next_utc - current_utc).total_seconds()
+                                self.print_message(username, proxy, Fore.BLUE, 
+                                    f"Next daily reward check will be in {self.format_seconds(wait_seconds)}")
+                                await asyncio.sleep(wait_seconds)
+                                continue
                         else:
                             self.print_message(username, proxy, Fore.YELLOW, "No Available Daily Rewards")
-
-                # 获取当前UTC时间
-                current_utc = datetime.now(pytz.UTC)
-                # 计算今天的UTC 0:00
-                today_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-                # 计算下一个UTC 0:00
-                next_utc = today_utc + timedelta(days=1)
-                
-                # 生成今天的随机签到时间（UTC 0-24点之间）
-                random_hour = random.randint(0, 23)
-                random_minute = random.randint(0, 59)
-                random_second = random.randint(0, 59)
-                today_reward_time = today_utc.replace(hour=random_hour, minute=random_minute, second=random_second)
-                
-                # 如果当前时间已经过了今天的随机时间，等待到下一个UTC 0:00
-                if current_utc >= today_reward_time:
-                    wait_seconds = (next_utc - current_utc).total_seconds()
-                    self.print_message(username, proxy, Fore.BLUE, 
-                        f"Reward time ({today_reward_time.strftime('%H:%M:%S')} UTC) has passed, waiting for next day")
-                    await asyncio.sleep(wait_seconds)
-                    continue
-
-                # 计算到随机签到时间的等待时间
-                wait_seconds = (today_reward_time - current_utc).total_seconds()
-                self.print_message(username, proxy, Fore.BLUE, 
-                    f"Waiting for reward time: {today_reward_time.strftime('%H:%M:%S')} UTC")
-                await asyncio.sleep(wait_seconds)
+                            # 如果没有可用奖励，等待到下一个UTC 0:00
+                            wait_seconds = (next_utc - current_utc).total_seconds()
+                            self.print_message(username, proxy, Fore.BLUE, 
+                                f"Next daily reward check will be in {self.format_seconds(wait_seconds)}")
+                            await asyncio.sleep(wait_seconds)
+                            continue
 
             except Exception as e:
                 # 处理未预期的异常（如网络错误、连接超时等）
