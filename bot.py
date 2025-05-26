@@ -35,7 +35,9 @@ class AiGaea:
         }
         self.accounts = []
         self.paused_accounts_file = "paused_accounts.json"
+        self.training_records_file = "training_records.json"
         self.paused_accounts = self.load_paused_accounts()
+        self.training_records = self.load_training_records()
 
     def load_paused_accounts(self):
         try:
@@ -45,6 +47,16 @@ class AiGaea:
             return {}
         except Exception as e:
             print(f"Error loading paused accounts: {e}")
+            return {}
+
+    def load_training_records(self):
+        try:
+            if os.path.exists(self.training_records_file):
+                with open(self.training_records_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            print(f"Error loading training records: {e}")
             return {}
 
     def save_paused_account(self, account_data):
@@ -59,6 +71,29 @@ class AiGaea:
         }
         with open(self.paused_accounts_file, 'w') as f:
             json.dump(self.paused_accounts, f, indent=4)
+
+    def save_training_record(self, account_data):
+        uid = account_data['UID']
+        current_date = datetime.now(pytz.UTC).strftime('%Y-%m-%d')
+        
+        if uid not in self.training_records:
+            self.training_records[uid] = {}
+            
+        self.training_records[uid][current_date] = {
+            'Name': account_data['Name'],
+            'Browser_ID': account_data['Browser_ID'],
+            'Token': account_data['Token'],
+            'Proxy': account_data['Proxy'],
+            'UID': uid,
+            'trained_at': datetime.now().astimezone(wib).strftime('%x %X %Z')
+        }
+        
+        with open(self.training_records_file, 'w') as f:
+            json.dump(self.training_records, f, indent=4)
+
+    def check_training_status(self, uid):
+        current_date = datetime.now(pytz.UTC).strftime('%Y-%m-%d')
+        return uid in self.training_records and current_date in self.training_records[uid]
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -581,6 +616,18 @@ class AiGaea:
     async def process_complete_training(self, token: str, username: str, account_data: dict, proxy=None):
         while True:
             try:
+                # 检查今天是否已经训练过
+                if self.check_training_status(account_data['UID']):
+                    current_utc = datetime.now(pytz.UTC)
+                    today_utc = current_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+                    next_utc = today_utc + timedelta(days=1)
+                    wait_seconds = (next_utc - current_utc).total_seconds()
+                    self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed Today (Local Record)")
+                    self.print_message(username, proxy, Fore.BLUE, 
+                        f"Waiting for next day's training")
+                    await asyncio.sleep(wait_seconds)
+                    continue
+
                 # 获取当前UTC时间
                 current_utc = datetime.now(pytz.UTC)
                 # 计算今天的UTC 0:00
@@ -594,19 +641,24 @@ class AiGaea:
                 random_second = random.randint(0, 59)
                 today_training_time = today_utc.replace(hour=random_hour, minute=random_minute, second=random_second)
                 
-                # 如果当前时间已经过了今天的训练时间，等待到下一个UTC 0:00
+                # 如果当前时间已经过了今天的训练时间，在当前时间到24点之间生成新的随机时间
                 if current_utc >= today_training_time:
-                    wait_seconds = (next_utc - current_utc).total_seconds()
+                    # 计算当前时间到24点的秒数
+                    remaining_seconds = (next_utc - current_utc).total_seconds()
+                    # 生成一个0到剩余秒数之间的随机等待时间
+                    random_wait_seconds = random.randint(0, int(remaining_seconds))
+                    # 计算新的随机时间点
+                    new_training_time = current_utc + timedelta(seconds=random_wait_seconds)
                     self.print_message(username, proxy, Fore.BLUE, 
-                        f"Training time ({today_training_time.strftime('%H:%M:%S')} UTC) has passed, waiting for next day")
+                        f"Original training time ({today_training_time.strftime('%H:%M:%S')} UTC) has passed, "
+                        f"will try at {new_training_time.strftime('%H:%M:%S')} UTC")
+                    await asyncio.sleep(random_wait_seconds)
+                else:
+                    # 计算到随机训练时间的等待时间
+                    wait_seconds = (today_training_time - current_utc).total_seconds()
+                    self.print_message(username, proxy, Fore.BLUE, 
+                        f"Waiting for training time: {today_training_time.strftime('%H:%M:%S')} UTC")
                     await asyncio.sleep(wait_seconds)
-                    continue
-
-                # 计算到随机训练时间的等待时间
-                wait_seconds = (today_training_time - current_utc).total_seconds()
-                self.print_message(username, proxy, Fore.BLUE, 
-                    f"Waiting for training time: {today_training_time.strftime('%H:%M:%S')} UTC")
-                await asyncio.sleep(wait_seconds)
                 
                 # 检查积分余额
                 self.print_message(username, proxy, Fore.BLUE, "Checking Points Balance...")
@@ -651,6 +703,8 @@ class AiGaea:
                                     f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                                     f"{Fore.WHITE + Style.BRIGHT}{blindbox} Blindbox{Style.RESET_ALL}"
                                 )
+                                # 记录训练完成
+                                self.save_training_record(account_data)
                                 # 训练成功后等待到下一个UTC 0:00
                                 wait_seconds = (next_utc - current_utc).total_seconds()
                                 self.print_message(username, proxy, Fore.BLUE, 
@@ -659,6 +713,8 @@ class AiGaea:
                                 continue
                             elif train.get("msg") == "Training already completed":
                                 self.print_message(username, proxy, Fore.YELLOW, "Training Already Completed Today")
+                                # 记录训练完成
+                                self.save_training_record(account_data)
                                 # 训练已完成时等待到下一个UTC 0:00
                                 wait_seconds = (next_utc - current_utc).total_seconds()
                                 self.print_message(username, proxy, Fore.BLUE, 
