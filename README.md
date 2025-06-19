@@ -60,7 +60,39 @@ bash
 
 创建并激活虚拟环境。
 
+在项目目录下执行以下命令：
+
+```bash
+# 创建虚拟环境
+python -m venv aigaea_venv
+
+# 在 Linux/MacOS 上激活虚拟环境
+source aigaea_venv/bin/activate
+
+# 在 Windows 上激活虚拟环境
+.\aigaea_venv\Scripts\activate
+```
+
+激活成功后，命令行前面会出现 (aigaea_venv) 的标识。
+
 安装项目依赖。
+
+在激活的虚拟环境中执行以下命令安装所需依赖：
+
+```bash
+# 确保 pip 是最新版本
+pip install --upgrade pip
+
+# 安装项目依赖
+pip install aiohttp
+pip install -r requirements.txt
+```
+
+如果遇到权限问题，可以尝试：
+```bash
+pip install --user aiohttp
+pip install --user -r requirements.txt
+```
 
 检查 tokens.txt 文件并提示配置。
 

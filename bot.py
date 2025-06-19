@@ -245,8 +245,8 @@ class AiGaea:
                     self.save_paused_account(account_data)
                     return
                 if earning:
-                    total_points = earning['total_total']  # Use total_total for Earning Total
-                    today_points = earning['today_total']  # Use today_total for Today Total
+                    total_points = earning['era_gaea']  # Use era_gaea for Earning Total
+                    today_points = earning['today_gaea']  # Use today_gaea for Today Total
                     uptime_minutes = earning['today_uptime']  # Uptime in minutes
                     uptime_hours = uptime_minutes / 60  # Convert to hours
                     self.print_message(username, proxy, Fore.WHITE,
@@ -669,7 +669,7 @@ class AiGaea:
                     return
                 
                 if earning:
-                    total_points = earning['total_total']
+                    total_points = earning['era_gaea']
                     
                     self.print_message(username, proxy, Fore.WHITE,
                         f"Current Points Balance: {total_points} PTS"
@@ -767,7 +767,7 @@ class AiGaea:
             return False
         
         if earning:
-            total_points = earning['total_total']
+            total_points = earning['era_gaea']
             self.print_message(username, proxy, Fore.WHITE,
                 f"Current Points Balance: {total_points} PTS"
             )
