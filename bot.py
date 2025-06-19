@@ -635,8 +635,8 @@ class AiGaea:
                 # 计算下一个UTC 0:00
                 next_utc = today_utc + timedelta(days=1)
                 
-                # 生成今天的随机训练时间（UTC 0-24点之间）
-                random_hour = random.randint(0, 23)
+                # 生成今天的随机训练时间（UTC 0-12点之间）
+                random_hour = random.randint(0, 11)
                 random_minute = random.randint(0, 59)
                 random_second = random.randint(0, 59)
                 today_training_time = today_utc.replace(hour=random_hour, minute=random_minute, second=random_second)
